@@ -202,6 +202,7 @@ npm run dev:web      # somente frontend
 | POST | `/auth/verify-email` | — | Confirma email via código `{ email, code }` |
 | GET | `/users/me` | JWT | Perfil do usuário logado |
 | PATCH | `/users/me` | JWT | Atualiza perfil |
+| POST | `/users/me/avatar` | JWT | Upload de avatar (multipart, max 2MB, JPG/PNG/WebP) |
 | GET | `/users` | admin | Lista todos os usuários |
 | PATCH | `/users/:id/status` | admin | Ativa/inativa usuário |
 | PATCH | `/users/:id/role` | admin | Altera role do usuário |
