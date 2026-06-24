@@ -28,12 +28,8 @@ export async function lessonRoutes(app: FastifyInstance) {
       include: {
         _count: { select: { bookings: true } },
         bookings: {
-          where: { status: 'confirmed' },
-          select: {
-            id: true,
-            user: { select: { id: true, name: true, avatarUrl: true } },
-          },
-          orderBy: { createdAt: 'asc' },
+          where: { status: 'confirmed', userId: (request.user as { sub: string }).sub },
+          select: { id: true, status: true },
         },
       },
       orderBy: [{ date: 'asc' }, { classTime: 'asc' }],

@@ -59,6 +59,14 @@ app.setErrorHandler((error, _request, reply) => {
     }
   }
 
+  if (
+    error instanceof Prisma.PrismaClientValidationError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientInitializationError
+  ) {
+    return reply.status(500).send({ message: 'Erro interno no servidor.' })
+  }
+
   const status = error.statusCode ?? 500
   return reply.status(status).send({ message: error.message || 'Erro interno no servidor.' })
 })

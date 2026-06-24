@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import path from 'path'
 import { env } from '../config/env'
 
 export const mailer = nodemailer.createTransport({
@@ -11,6 +12,8 @@ export const mailer = nodemailer.createTransport({
   },
 })
 
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png')
+
 function emailTemplate(opts: {
   title: string
   intro: string
@@ -18,7 +21,6 @@ function emailTemplate(opts: {
   expiryText: string
   outro: string
 }): string {
-  const logoUrl = `${env.FRONTEND_URL}/logo-transparent.png`
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -35,8 +37,8 @@ function emailTemplate(opts: {
           <!-- Header -->
           <tr>
             <td align="center" style="background:#F47B1A;padding:36px 32px 28px;">
-              <img src="${logoUrl}" alt="Manahau Va'A" width="76" height="76"
-                style="display:block;margin:0 auto 14px;border-radius:50%;background:rgba(255,255,255,0.15);padding:6px;">
+              <img src="cid:logo" alt="Manahau Va'A" width="80" height="80"
+                style="display:block;margin:0 auto 14px;border-radius:50%;background:rgba(255,255,255,0.20);padding:6px;">
               <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:800;letter-spacing:-0.3px;line-height:1.2;">
                 Manahau Va'A
               </h1>
@@ -90,6 +92,12 @@ function emailTemplate(opts: {
 </html>`
 }
 
+const logoAttachment = {
+  filename: 'logo.png',
+  path: LOGO_PATH,
+  cid: 'logo',
+}
+
 export async function sendEmailVerification(to: string, name: string, code: string) {
   const firstName = name.split(' ')[0]
   await mailer.sendMail({
@@ -103,6 +111,7 @@ export async function sendEmailVerification(to: string, name: string, code: stri
       expiryText: 'Este código não expira e é válido para uma única utilização.',
       outro: 'Se você não criou esta conta, ignore este email com segurança.',
     }),
+    attachments: [logoAttachment],
   })
 }
 
@@ -119,5 +128,6 @@ export async function sendPasswordResetEmail(to: string, name: string, code: str
       expiryText: 'Este código expira em 15 minutos.',
       outro: 'Se você não solicitou a redefinição de senha, ignore este email. Sua senha permanece a mesma.',
     }),
+    attachments: [logoAttachment],
   })
 }

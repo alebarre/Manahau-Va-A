@@ -9,3 +9,9 @@ build/
 .turbo/
 coverage/
 prisma/migrations/dev/
+
+# Claude / AI tooling — não expor ao repositório público
+CLAUDE.md
+.claude/
+primeiro-prompt.txt
+*.claude-*

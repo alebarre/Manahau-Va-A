@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { randomInt } from 'crypto'
 import { prisma } from '../../lib/prisma'
 import { sendEmailVerification, sendPasswordResetEmail } from '../../lib/mailer'
 import type { RegisterInput, LoginInput } from './auth.schema'
@@ -6,7 +7,7 @@ import type { RegisterInput, LoginInput } from './auth.schema'
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 function generateCode(): string {
-  return Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('')
+  return Array.from({ length: 5 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('')
 }
 
 export async function registerUser(data: RegisterInput) {
