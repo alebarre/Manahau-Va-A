@@ -17,6 +17,8 @@ export async function lessonRoutes(app: FastifyInstance) {
   // Listar aulas por data (padrão: hoje em diante)
   app.get('/', async (request) => {
     const { from, to } = request.query as { from?: string; to?: string }
+    const { sub, role } = request.user as { sub: string; role: string }
+    const isStaff = role === 'professor' || role === 'super_admin'
     const dateFrom = from ? new Date(from) : new Date()
     const dateTo = to ? new Date(to) : undefined
 
@@ -26,11 +28,17 @@ export async function lessonRoutes(app: FastifyInstance) {
         date: { gte: dateFrom, ...(dateTo && { lte: dateTo }) },
       },
       include: {
-        _count: { select: { bookings: true } },
-        bookings: {
-          where: { status: 'confirmed', userId: (request.user as { sub: string }).sub },
-          select: { id: true, status: true },
-        },
+        _count: { select: { bookings: { where: { status: 'confirmed' } } } },
+        bookings: isStaff
+          ? {
+              where: { status: 'confirmed' },
+              select: { id: true, user: { select: { id: true, name: true, avatarUrl: true } } },
+              orderBy: { createdAt: 'asc' as const },
+            }
+          : {
+              where: { status: 'confirmed', userId: sub },
+              select: { id: true, status: true },
+            },
       },
       orderBy: [{ date: 'asc' }, { classTime: 'asc' }],
     })
@@ -39,15 +47,19 @@ export async function lessonRoutes(app: FastifyInstance) {
   // Detalhe de uma aula com vagas
   app.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
+    const { sub, role } = request.user as { sub: string; role: string }
+    const isStaff = role === 'professor' || role === 'super_admin'
+
     const lesson = await prisma.lesson.findUnique({
       where: { id },
       include: {
-        bookings: {
-          select: { id: true, status: true, user: { select: { id: true, name: true } } },
-        },
-        oc1Requests: {
-          select: { id: true, status: true, user: { select: { id: true, name: true } } },
-        },
+        _count: { select: { bookings: { where: { status: 'confirmed' } } } },
+        bookings: isStaff
+          ? { where: { status: 'confirmed' }, select: { id: true, status: true, user: { select: { id: true, name: true, avatarUrl: true } } } }
+          : { where: { userId: sub }, select: { id: true, status: true } },
+        oc1Requests: isStaff
+          ? { select: { id: true, status: true, user: { select: { id: true, name: true } } } }
+          : { where: { userId: sub }, select: { id: true, status: true } },
       },
     })
     if (!lesson) return reply.status(404).send({ message: 'Aula não encontrada.' })

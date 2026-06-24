@@ -21,6 +21,23 @@ export async function oc1Routes(app: FastifyInstance) {
       return reply.status(404).send({ message: 'Aula não encontrada.' })
     }
 
+    // Verifica se já existe uma solicitação (pode ser cancelada)
+    const existing = await prisma.oc1Request.findUnique({
+      where: { userId_lessonId: { userId: sub, lessonId } },
+    })
+
+    if (existing) {
+      if (existing.status === 'pending' || existing.status === 'confirmed') {
+        return reply.status(409).send({ message: 'Você já tem uma solicitação ativa para esta aula.' })
+      }
+      // Re-solicitar após cancelamento
+      const req = await prisma.oc1Request.update({
+        where: { id: existing.id },
+        data: { status: 'pending', notes },
+      })
+      return reply.status(200).send({ message: 'Solicitação reenviada. Aguarde confirmação.', req })
+    }
+
     const req = await prisma.oc1Request.create({
       data: { userId: sub, lessonId, notes },
     })

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { authenticate, authorize } from '../../middlewares/authenticate'
 import { prisma } from '../../lib/prisma'
+import { uploadImage, deleteImage, extractPublicId } from '../../lib/cloudinary'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 
@@ -49,6 +50,46 @@ export async function userRoutes(app: FastifyInstance) {
       select: { id: true, name: true, email: true, role: true },
     })
     return user
+  })
+
+  // Upload de avatar
+  app.post('/me/avatar', async (request, reply) => {
+    const { sub } = request.user as { sub: string }
+
+    let fileBuffer: Buffer | null = null
+    let fileMime = ''
+
+    for await (const part of request.parts()) {
+      if (part.type === 'file' && part.fieldname === 'file') {
+        fileMime = part.mimetype
+        fileBuffer = await part.toBuffer()
+      }
+    }
+
+    if (!fileBuffer) return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowed.includes(fileMime)) {
+      return reply.status(400).send({ message: 'Formato inválido. Use JPG, PNG ou WebP.' })
+    }
+    if (fileBuffer.length > 2 * 1024 * 1024) {
+      return reply.status(400).send({ message: 'Imagem muito grande. Máximo 2MB.' })
+    }
+
+    // Remove avatar anterior do Cloudinary
+    const current = await prisma.user.findUnique({ where: { id: sub }, select: { avatarUrl: true } })
+    if (current?.avatarUrl) {
+      const publicId = extractPublicId(current.avatarUrl)
+      if (publicId) await deleteImage(publicId).catch(() => {})
+    }
+
+    const avatarUrl = await uploadImage(fileBuffer, 'avatars')
+    const user = await prisma.user.update({
+      where: { id: sub },
+      data: { avatarUrl },
+      select: { id: true, avatarUrl: true },
+    })
+    return reply.send(user)
   })
 
   // Admin: listar todos os usuários

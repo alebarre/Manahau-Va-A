@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { User, Calendar, Clock } from 'lucide-react'
+import { Camera, Calendar, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const profileSchema = z.object({
@@ -20,16 +20,84 @@ type ProfileForm = z.infer<typeof profileSchema>
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   confirmed: { label: 'Confirmado', color: 'text-green-600 bg-green-50' },
-  pending: { label: 'Pendente', color: 'text-yellow-600 bg-yellow-50' },
-  cancelled: { label: 'Cancelado', color: 'text-red-500 bg-red-50' },
+  pending:   { label: 'Pendente',   color: 'text-yellow-600 bg-yellow-50' },
+  cancelled: { label: 'Cancelado',  color: 'text-red-500 bg-red-50' },
 }
 
+function AvatarButton({
+  name,
+  avatarUrl,
+  onUpload,
+  uploading,
+}: {
+  name: string
+  avatarUrl?: string | null
+  onUpload: (file: File) => void
+  uploading: boolean
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const initials = name
+    .split(' ')
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    onUpload(file)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => fileRef.current?.click()}
+      disabled={uploading}
+      className="relative w-20 h-20 rounded-full flex-shrink-0 group focus:outline-none"
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={name}
+          className="w-20 h-20 rounded-full object-cover"
+        />
+      ) : (
+        <div className="w-20 h-20 rounded-full bg-brand-orange flex items-center justify-center">
+          <span className="text-white font-bold text-2xl">{initials}</span>
+        </div>
+      )}
+
+      {/* Overlay */}
+      <span className={cn(
+        'absolute inset-0 rounded-full bg-black/40 flex items-center justify-center transition-opacity',
+        uploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+      )}>
+        {uploading ? (
+          <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <Camera className="w-6 h-6 text-white" />
+        )}
+      </span>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleChange}
+      />
+    </button>
+  )
+}
 
 export default function ProfilePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<'profile' | 'bookings' | 'oc1'>('profile')
   const [saved, setSaved] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
 
   const { data: profile } = useQuery({
     queryKey: ['me'],
@@ -65,27 +133,68 @@ export default function ProfilePage() {
     },
   })
 
+  const avatarMutation = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post('/users/me/avatar', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      setAvatarError('')
+    },
+    onError: (err: any) => {
+      setAvatarError(err.response?.data?.message || 'Erro ao enviar foto.')
+    },
+  })
+
+  function handleAvatarUpload(file: File) {
+    setAvatarError('')
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowed.includes(file.type)) {
+      setAvatarError('Formato inválido. Use JPG, PNG ou WebP.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('Imagem muito grande. Máximo 2MB.')
+      return
+    }
+    avatarMutation.mutate(file)
+  }
+
   const cancelBookingMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/bookings/${id}/cancel`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-bookings'] }),
   })
 
   const tabs = [
-    { key: 'profile', label: 'Perfil' },
-    { key: 'bookings', label: 'Remadas' },
-    { key: 'oc1', label: 'OC1' },
+    { key: 'profile',   label: 'Perfil' },
+    { key: 'bookings',  label: 'Remadas' },
+    { key: 'oc1',       label: 'OC1' },
   ] as const
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-full bg-brand-orange flex items-center justify-center">
-          <User className="w-6 h-6 text-white" />
-        </div>
-        <div>
-          <p className="font-bold text-gray-900">{user?.name}</p>
+      {/* Header com avatar */}
+      <div className="flex items-center gap-4 mb-6">
+        <AvatarButton
+          name={profile?.name || user?.name || '?'}
+          avatarUrl={profile?.avatarUrl}
+          onUpload={handleAvatarUpload}
+          uploading={avatarMutation.isPending}
+        />
+        <div className="min-w-0">
+          <p className="font-bold text-gray-900 truncate">{user?.name}</p>
           <p className="text-xs text-gray-400 capitalize">{user?.role?.replace('_', ' ')}</p>
+          {avatarError && (
+            <p className="text-xs text-red-500 mt-0.5">{avatarError}</p>
+          )}
+          {avatarMutation.isSuccess && (
+            <p className="text-xs text-green-600 mt-0.5">Foto atualizada!</p>
+          )}
+          <p className="text-xs text-gray-400 mt-1">Toque na foto para alterar</p>
         </div>
       </div>
 

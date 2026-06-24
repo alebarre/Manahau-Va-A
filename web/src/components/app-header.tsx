@@ -59,30 +59,29 @@ export function AppHeader() {
       />
 
       <div className="max-w-lg mx-auto flex items-center h-14 px-3 gap-2">
-        {/* Botão voltar */}
-        {isRoot ? (
-          <div className="w-9" />
-        ) : (
+        {/* Botão voltar — oculto na home para dar espaço ao banner */}
+        {!isRoot && (
           <button
             onClick={() => router.back()}
-            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition"
+            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition flex-shrink-0"
           >
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
         )}
 
-        {/* Centro: logo em home, título nas demais */}
-        <div className="flex-1 flex items-center justify-center">
+        {/* Centro/esquerda: banner canoa em home, título nas demais */}
+        <div className="flex-1 flex items-center">
           {pathname === '/home' ? (
             <Image
-              src="/logo-transparent.png"
+              src="/canoe-banner.png"
               alt="Manahau Va'A"
-              width={40}
-              height={40}
-              className="h-9 w-auto"
+              width={320}
+              height={56}
+              className="h-10 w-auto object-contain object-left"
+              priority
             />
           ) : (
-            <span className="font-semibold text-gray-800 text-sm">{title}</span>
+            <span className="flex-1 text-center font-semibold text-gray-800 text-sm">{title}</span>
           )}
         </div>
 

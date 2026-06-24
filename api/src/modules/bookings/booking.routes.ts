@@ -28,7 +28,7 @@ export async function bookingRoutes(app: FastifyInstance) {
 
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
-      include: { _count: { select: { bookings: true } } },
+      include: { _count: { select: { bookings: { where: { status: 'confirmed' } } } } },
     })
 
     if (!lesson || !lesson.active) {
@@ -39,6 +39,23 @@ export async function bookingRoutes(app: FastifyInstance) {
     }
     if (lesson._count.bookings >= lesson.maxSpots) {
       return reply.status(409).send({ message: 'Aula sem vagas disponíveis.' })
+    }
+
+    // Verifica se já existe um booking (pode ser cancelado)
+    const existing = await prisma.booking.findUnique({
+      where: { userId_lessonId: { userId: sub, lessonId } },
+    })
+
+    if (existing) {
+      if (existing.status === 'confirmed') {
+        return reply.status(409).send({ message: 'Você já está agendado para esta aula.' })
+      }
+      // Re-ativar booking cancelado
+      const booking = await prisma.booking.update({
+        where: { id: existing.id },
+        data: { status: 'confirmed', notes },
+      })
+      return reply.status(200).send(booking)
     }
 
     const booking = await prisma.booking.create({

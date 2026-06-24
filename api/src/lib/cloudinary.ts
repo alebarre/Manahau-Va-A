@@ -21,3 +21,11 @@ export async function uploadImage(buffer: Buffer, folder: string): Promise<strin
 export async function deleteImage(publicId: string) {
   await cloudinary.uploader.destroy(publicId)
 }
+
+export function extractPublicId(url: string): string {
+  // https://res.cloudinary.com/cloud/image/upload/v123456/manahau/folder/file.jpg
+  const parts = url.split('/upload/')
+  if (parts.length < 2) return ''
+  const afterUpload = parts[1].replace(/^v\d+\//, '') // remove version prefix
+  return afterUpload.replace(/\.[^/.]+$/, '')          // remove extension
+}

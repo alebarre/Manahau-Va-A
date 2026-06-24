@@ -12,7 +12,8 @@ import { Spinner } from '@/components/ui/spinner'
 
 type BookedUser = {
   id: string
-  user: { id: string; name: string; avatarUrl: string | null }
+  status?: string
+  user?: { id: string; name: string; avatarUrl: string | null }
 }
 
 type Lesson = {
@@ -134,22 +135,30 @@ export default function RemadasPage() {
                 </h2>
 
                 <div className="space-y-3">
-                  {oc6.map((lesson) => (
-                    <LessonCard
-                      key={lesson.id}
-                      lesson={lesson}
-                      state={lessonStates[lesson.id] ?? { status: 'idle' }}
-                      onAction={() => bookMutation.mutate(lesson.id)}
-                    />
-                  ))}
-                  {oc1.map((lesson) => (
-                    <LessonCard
-                      key={lesson.id}
-                      lesson={lesson}
-                      state={lessonStates[lesson.id] ?? { status: 'idle' }}
-                      onAction={() => oc1Mutation.mutate(lesson.id)}
-                    />
-                  ))}
+                  {oc6.map((lesson) => {
+                    const isBooked = lesson.bookings.some((b) => !b.user)
+                    return (
+                      <LessonCard
+                        key={lesson.id}
+                        lesson={lesson}
+                        state={lessonStates[lesson.id] ?? { status: 'idle' }}
+                        isBooked={isBooked}
+                        onAction={() => bookMutation.mutate(lesson.id)}
+                      />
+                    )
+                  })}
+                  {oc1.map((lesson) => {
+                    const isBooked = lesson.bookings.some((b) => !b.user)
+                    return (
+                      <LessonCard
+                        key={lesson.id}
+                        lesson={lesson}
+                        state={lessonStates[lesson.id] ?? { status: 'idle' }}
+                        isBooked={isBooked}
+                        onAction={() => oc1Mutation.mutate(lesson.id)}
+                      />
+                    )
+                  })}
                 </div>
               </section>
             )
@@ -163,16 +172,18 @@ export default function RemadasPage() {
 function LessonCard({
   lesson,
   state,
+  isBooked,
   onAction,
 }: {
   lesson: Lesson
   state: LessonState
+  isBooked: boolean
   onAction: () => void
 }) {
   const isOc6 = lesson.classType === 'OC6'
   const spots = lesson.maxSpots - lesson._count.bookings
   const full  = isOc6 && spots <= 0
-  const done  = state.status === 'success'
+  const done  = state.status === 'success' || isBooked
   const err   = state.status === 'error'
   const busy  = state.status === 'loading'
 
@@ -218,24 +229,24 @@ function LessonCard({
         <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 mb-3">{lesson.notes}</p>
       )}
 
-      {/* Alunos agendados */}
-      {isOc6 && lesson.bookings.length > 0 && (
+      {/* Alunos agendados — visível apenas para professor/admin (bookings têm user) */}
+      {isOc6 && lesson.bookings.some((b) => b.user) && (
         <div className="mb-3 space-y-1.5">
-          {lesson.bookings.map((b, i) => (
+          {lesson.bookings.filter((b) => b.user).map((b, i) => (
             <div key={b.id} className="flex items-center gap-2 text-sm text-gray-700">
               <span className="w-4 text-xs text-gray-400 text-right shrink-0">{i + 1}</span>
-              {b.user.avatarUrl ? (
+              {b.user!.avatarUrl ? (
                 <img
-                  src={b.user.avatarUrl}
-                  alt={b.user.name}
+                  src={b.user!.avatarUrl}
+                  alt={b.user!.name}
                   className="w-6 h-6 rounded-full object-cover shrink-0"
                 />
               ) : (
                 <div className="w-6 h-6 rounded-full bg-brand-orange/20 text-brand-orange text-[10px] font-bold flex items-center justify-center shrink-0">
-                  {b.user.name.charAt(0).toUpperCase()}
+                  {b.user!.name.charAt(0).toUpperCase()}
                 </div>
               )}
-              <span className="truncate">{b.user.name}</span>
+              <span className="truncate">{b.user!.name}</span>
             </div>
           ))}
         </div>
@@ -247,7 +258,13 @@ function LessonCard({
         </p>
       )}
 
-      {done && (
+      {isBooked && state.status === 'idle' && (
+        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3">
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          {isOc6 ? 'Você já está agendado nesta canoa.' : 'Sua solicitação foi enviada.'}
+        </div>
+      )}
+      {state.status === 'success' && (
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3">
           <CheckCircle className="w-4 h-4 shrink-0" />
           {state.message}

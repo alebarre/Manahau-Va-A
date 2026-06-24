@@ -52,11 +52,13 @@ app.setErrorHandler((error, _request, reply) => {
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2002') {
-      return reply.status(409).send({ message: 'Registro duplicado. Já existe uma aula com esse horário neste dia.' })
+      return reply.status(409).send({ message: 'Registro duplicado.' })
     }
     if (error.code === 'P2025') {
       return reply.status(404).send({ message: 'Registro não encontrado.' })
     }
+    // Qualquer outro erro Prisma conhecido — não expor detalhes ao cliente
+    return reply.status(500).send({ message: 'Erro interno no servidor.' })
   }
 
   if (
