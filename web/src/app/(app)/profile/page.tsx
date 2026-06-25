@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Camera, Calendar, Clock } from 'lucide-react'
+import { Camera, Calendar, Clock, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const profileSchema = z.object({
@@ -19,9 +19,15 @@ const profileSchema = z.object({
 type ProfileForm = z.infer<typeof profileSchema>
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  confirmed: { label: 'Confirmado', color: 'text-green-600 bg-green-50' },
-  pending:   { label: 'Pendente',   color: 'text-yellow-600 bg-yellow-50' },
-  cancelled: { label: 'Cancelado',  color: 'text-red-500 bg-red-50' },
+  confirmed: { label: 'Confirmado', color: 'text-green-700 bg-green-50 border-green-200' },
+  pending:   { label: 'Pendente',   color: 'text-yellow-700 bg-yellow-50 border-yellow-200' },
+  cancelled: { label: 'Cancelado',  color: 'text-red-500 bg-red-50 border-red-200' },
+}
+
+function arriveTime(classTime: string) {
+  const [h, m] = classTime.split(':').map(Number)
+  const d = new Date(0, 0, 0, h, m - 30)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function AvatarButton({
@@ -107,13 +113,11 @@ export default function ProfilePage() {
   const { data: bookings = [] } = useQuery({
     queryKey: ['my-bookings'],
     queryFn: () => api.get('/bookings/my').then((r) => r.data),
-    enabled: tab === 'bookings',
   })
 
   const { data: oc1Requests = [] } = useQuery({
     queryKey: ['my-oc1'],
     queryFn: () => api.get('/oc1/my').then((r) => r.data),
-    enabled: tab === 'oc1',
   })
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ProfileForm>({
@@ -169,10 +173,20 @@ export default function ProfilePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-bookings'] }),
   })
 
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+
+  const upcomingOc6Count = (bookings as any[]).filter(
+    (b) => b.status === 'confirmed' && new Date(b.lesson.date) >= today
+  ).length
+
+  const upcomingOc1Count = (oc1Requests as any[]).filter(
+    (r) => r.status !== 'cancelled' && new Date(r.lesson.date) >= today
+  ).length
+
   const tabs = [
-    { key: 'profile',   label: 'Perfil' },
-    { key: 'bookings',  label: 'Remadas' },
-    { key: 'oc1',       label: 'OC1' },
+    { key: 'profile',  label: 'Perfil',   badge: null },
+    { key: 'bookings', label: 'Remadas',  badge: upcomingOc6Count || null },
+    { key: 'oc1',      label: 'OC1',      badge: upcomingOc1Count || null },
   ] as const
 
   return (
@@ -205,11 +219,16 @@ export default function ProfilePage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              'flex-1 py-2 rounded-lg text-sm font-medium transition',
+              'flex-1 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-1.5',
               tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             )}
           >
             {t.label}
+            {t.badge !== null && (
+              <span className="bg-brand-orange text-white text-[10px] font-bold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -260,81 +279,166 @@ export default function ProfilePage() {
         </form>
       )}
 
-      {/* Tab: Remadas */}
+      {/* Tab: Remadas (OC6) */}
       {tab === 'bookings' && (() => {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const upcoming = bookings.filter((b: any) => new Date(b.lesson.date) >= today)
-        if (upcoming.length === 0) return (
-          <div className="text-center py-10 text-gray-400">
+        const sorted = [...(bookings as any[])].sort(
+          (a, b) => a.lesson.date.localeCompare(b.lesson.date)
+        )
+        const upcoming = sorted.filter((b) => new Date(b.lesson.date) >= today && b.status !== 'cancelled')
+        const past     = sorted.filter((b) => new Date(b.lesson.date) <  today || b.status === 'cancelled')
+
+        if (sorted.length === 0) return (
+          <div className="text-center py-12 text-gray-400">
             <Calendar className="w-10 h-10 mx-auto mb-2 opacity-40" />
-            <p>Nenhum agendamento futuro.</p>
+            <p className="font-medium text-gray-500">Nenhuma remada OC6 ainda.</p>
+            <p className="text-sm mt-1">Vá em "Agendar" para reservar.</p>
           </div>
         )
-        return (
-          <div className="space-y-3">
-            {upcoming.map((b: any) => {
-              const st = STATUS_LABELS[b.status]
-              return (
-                <div key={b.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-gray-900">
-                      {format(new Date(b.lesson.date), "dd 'de' MMMM", { locale: ptBR })}
-                    </p>
-                    <span className={cn('text-xs font-medium px-2.5 py-1 rounded-full', st.color)}>
-                      {st.label}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm text-gray-500">
-                    <Clock className="w-3.5 h-3.5" />
-                    {b.lesson.classTime} — OC6
-                  </div>
-                  {b.status === 'confirmed' && (
-                    <button
-                      onClick={() => cancelBookingMutation.mutate(b.id)}
-                      className="mt-3 text-xs text-red-500 hover:underline"
-                    >
-                      Cancelar agendamento
-                    </button>
-                  )}
+
+        function BookingCard({ b }: { b: any }) {
+          const st = STATUS_LABELS[b.status]
+          const date = new Date(b.lesson.date.slice(0, 10) + 'T12:00:00')
+          return (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs text-gray-400 capitalize">
+                    {format(date, 'EEEE', { locale: ptBR })}
+                  </p>
+                  <p className="font-bold text-gray-900">
+                    {format(date, "dd 'de' MMMM", { locale: ptBR })}
+                  </p>
                 </div>
-              )
-            })}
+                <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0', st.color)}>
+                  {st.label}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {b.lesson.classTime}
+                </span>
+                <span className="text-gray-300">·</span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  Praia às {arriveTime(b.lesson.classTime)}
+                </span>
+              </div>
+              {b.status === 'confirmed' && new Date(b.lesson.date) >= today && (
+                <button
+                  onClick={() => cancelBookingMutation.mutate(b.id)}
+                  disabled={cancelBookingMutation.isPending}
+                  className="mt-3 text-xs text-red-500 hover:text-red-600 hover:underline disabled:opacity-50"
+                >
+                  Cancelar agendamento
+                </button>
+              )}
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-5">
+            {upcoming.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Próximas</p>
+                {upcoming.map((b: any) => <BookingCard key={b.id} b={b} />)}
+              </div>
+            )}
+            {past.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Histórico</p>
+                {past.map((b: any) => (
+                  <div key={b.id} className="opacity-60">
+                    <BookingCard b={b} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       })()}
 
       {/* Tab: OC1 */}
-      {tab === 'oc1' && (
-        <div className="space-y-3">
-          {oc1Requests.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <Clock className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p>Nenhuma solicitação OC1.</p>
-            </div>
-          ) : (
-            oc1Requests.map((r: any) => {
-              const st = STATUS_LABELS[r.status]
-              return (
-                <div key={r.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-gray-900">
-                      {format(new Date(r.lesson.date), "dd 'de' MMMM", { locale: ptBR })}
-                    </p>
-                    <span className={cn('text-xs font-medium px-2.5 py-1 rounded-full', st.color)}>
-                      {st.label}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm text-gray-500">
-                    <Clock className="w-3.5 h-3.5" />
-                    {r.lesson.classTime} — OC1 individual
-                  </div>
+      {tab === 'oc1' && (() => {
+        const sorted = [...(oc1Requests as any[])].sort(
+          (a, b) => a.lesson.date.localeCompare(b.lesson.date)
+        )
+        const upcoming = sorted.filter((r) => new Date(r.lesson.date) >= today && r.status !== 'cancelled')
+        const past     = sorted.filter((r) => new Date(r.lesson.date) <  today || r.status === 'cancelled')
+
+        if (sorted.length === 0) return (
+          <div className="text-center py-12 text-gray-400">
+            <Clock className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            <p className="font-medium text-gray-500">Nenhuma aula OC1 ainda.</p>
+            <p className="text-sm mt-1">Solicite via "Remadas".</p>
+          </div>
+        )
+
+        function Oc1Card({ r }: { r: any }) {
+          const st = STATUS_LABELS[r.status]
+          const date = new Date(r.lesson.date.slice(0, 10) + 'T12:00:00')
+          return (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs text-gray-400 capitalize">
+                    {format(date, 'EEEE', { locale: ptBR })}
+                  </p>
+                  <p className="font-bold text-gray-900">
+                    {format(date, "dd 'de' MMMM", { locale: ptBR })}
+                  </p>
                 </div>
-              )
-            })
-          )}
-        </div>
-      )}
+                <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0', st.color)}>
+                  {st.label}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {r.lesson.classTime}
+                </span>
+                <span className="text-gray-300">·</span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  Praia às {arriveTime(r.lesson.classTime)}
+                </span>
+              </div>
+              {r.status === 'pending' && (
+                <p className="mt-2 text-xs text-yellow-600 bg-yellow-50 rounded-lg px-2.5 py-1.5">
+                  Aguardando confirmação do professor.
+                </p>
+              )}
+              {r.status === 'confirmed' && new Date(r.lesson.date) >= today && (
+                <p className="mt-2 text-xs text-green-700 bg-green-50 rounded-lg px-2.5 py-1.5">
+                  Aula confirmada! Prepare-se.
+                </p>
+              )}
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-5">
+            {upcoming.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Próximas</p>
+                {upcoming.map((r: any) => <Oc1Card key={r.id} r={r} />)}
+              </div>
+            )}
+            {past.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Histórico</p>
+                {past.map((r: any) => (
+                  <div key={r.id} className="opacity-60">
+                    <Oc1Card r={r} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

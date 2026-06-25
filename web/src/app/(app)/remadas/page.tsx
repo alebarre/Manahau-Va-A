@@ -53,6 +53,28 @@ export default function RemadasPage() {
   const { data: lessons = [], isLoading, isError } = useQuery<Lesson[]>({
     queryKey: ['remadas-all'],
     queryFn: () => api.get('/lessons').then((r) => r.data),
+    enabled: isStaff,
+  })
+
+  // Aluno: próprias remadas (OC6 + OC1)
+  const { data: myBookings = [], isLoading: loadingBookings } = useQuery({
+    queryKey: ['my-bookings'],
+    queryFn: () => api.get('/bookings/my').then((r) => r.data),
+    enabled: !isStaff,
+  })
+
+  const { data: myOc1 = [], isLoading: loadingOc1 } = useQuery({
+    queryKey: ['my-oc1'],
+    queryFn: () => api.get('/oc1/my').then((r) => r.data),
+    enabled: !isStaff,
+  })
+
+  const cancelBookingMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/bookings/${id}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
+      queryClient.invalidateQueries({ queryKey: ['remadas-count'] })
+    },
   })
 
   const bookMutation = useMutation({
@@ -78,7 +100,10 @@ export default function RemadasPage() {
   const oc1AlunoCancelMutation = useMutation({
     mutationFn: ({ reqId, justification }: { reqId: string; justification: string }) =>
       api.patch(`/oc1/${reqId}/cancel`, { justification }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remadas-all'] })
+      queryClient.invalidateQueries({ queryKey: ['my-oc1'] })
+    },
   })
 
   const byDate = lessons.reduce<Record<string, Lesson[]>>((acc, lesson) => {
@@ -90,6 +115,62 @@ export default function RemadasPage() {
 
   const dateSections = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
 
+  // ── Aluno: minhas remadas (OC6 + OC1 mesclados) ──────────────────────────────
+  if (!isStaff) {
+    const loading = loadingBookings || loadingOc1
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+
+    type MyItem =
+      | { kind: 'OC6'; id: string; status: string; lessonDate: string; classTime: string }
+      | { kind: 'OC1'; id: string; status: string; lessonDate: string; classTime: string }
+
+    const oc6Items: MyItem[] = (myBookings as any[])
+      .filter((b) => new Date(b.lesson.date) >= today)
+      .map((b) => ({ kind: 'OC6', id: b.id, status: b.status, lessonDate: b.lesson.date, classTime: b.lesson.classTime }))
+
+    const oc1Items: MyItem[] = (myOc1 as any[])
+      .filter((r) => new Date(r.lesson.date) >= today && r.status !== 'cancelled')
+      .map((r) => ({ kind: 'OC1', id: r.id, status: r.status, lessonDate: r.lesson.date, classTime: r.lesson.classTime }))
+
+    const allItems = [...oc6Items, ...oc1Items].sort((a, b) => a.lessonDate.localeCompare(b.lessonDate))
+
+    return (
+      <div className="max-w-lg mx-auto px-4 py-5">
+        <p className="text-sm text-gray-500 mb-5">Suas remadas agendadas a partir de hoje.</p>
+
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+            <Spinner className="w-7 h-7 text-brand-orange" />
+            <p className="text-sm">Carregando…</p>
+          </div>
+        )}
+
+        {!loading && allItems.length === 0 && (
+          <div className="text-center py-16 text-gray-400">
+            <p className="text-4xl mb-3">🛶</p>
+            <p className="font-medium text-gray-600">Nenhuma remada agendada.</p>
+            <p className="text-sm mt-1">Vá em "Agendar" para reservar sua próxima remada.</p>
+          </div>
+        )}
+
+        {!loading && (
+          <div className="space-y-3">
+            {allItems.map((item) => (
+              <MyRemadaCard
+                key={`${item.kind}-${item.id}`}
+                item={item}
+                onCancelOc6={() => cancelBookingMutation.mutate(item.id)}
+                onCancelOc1={(justification) => oc1AlunoCancelMutation.mutate({ reqId: item.id, justification })}
+                cancelling={cancelBookingMutation.isPending || oc1AlunoCancelMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Staff: gerenciamento de aulas ─────────────────────────────────────────────
   return (
     <div className="max-w-lg mx-auto px-4 py-5">
       <p className="text-sm text-gray-500 mb-5">Todas as remadas abertas a partir de hoje.</p>
@@ -112,7 +193,7 @@ export default function RemadasPage() {
         <div className="text-center py-16 text-gray-400">
           <p className="text-4xl mb-3">🛶</p>
           <p className="font-medium text-gray-600">Nenhuma remada aberta no momento.</p>
-          <p className="text-sm mt-1">Aguarde a programação do professor.</p>
+          <p className="text-sm mt-1">Crie aulas no painel admin.</p>
         </div>
       )}
 
@@ -156,6 +237,127 @@ export default function RemadasPage() {
               </section>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Aluno: card de remada agendada ──────────────────────────────────────────
+
+type MyRemadaItem = {
+  kind: 'OC6' | 'OC1'
+  id: string
+  status: string
+  lessonDate: string
+  classTime: string
+}
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  confirmed: { label: 'Confirmado', color: 'text-green-600 bg-green-50 border-green-200' },
+  pending:   { label: 'Pendente',   color: 'text-yellow-600 bg-yellow-50 border-yellow-200' },
+  cancelled: { label: 'Cancelado',  color: 'text-red-500 bg-red-50 border-red-200' },
+}
+
+function MyRemadaCard({
+  item, onCancelOc6, onCancelOc1, cancelling,
+}: {
+  item: MyRemadaItem
+  onCancelOc6: () => void
+  onCancelOc1: (justification: string) => void
+  cancelling: boolean
+}) {
+  const [showCancelForm, setShowCancelForm] = useState(false)
+  const [justification, setJustification] = useState('')
+  const [wordError, setWordError] = useState('')
+
+  const st = STATUS_LABELS[item.status] ?? STATUS_LABELS.confirmed
+  const dateObj = new Date(item.lessonDate.slice(0, 10) + 'T12:00:00')
+
+  function handleOc1Cancel() {
+    const words = justification.trim().split(/\s+/).filter(Boolean).length
+    if (words < 5)  { setWordError('Mínimo de 5 palavras.'); return }
+    if (words > 50) { setWordError('Máximo de 50 palavras.'); return }
+    setWordError('')
+    onCancelOc1(justification)
+    setShowCancelForm(false)
+    setJustification('')
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className="font-semibold text-gray-900">
+          {format(dateObj, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+        </p>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+            {item.kind}
+          </span>
+          <span className={cn('text-xs font-medium px-2.5 py-1 rounded-full border', st.color)}>
+            {st.label}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 text-sm text-gray-500 mb-3">
+        <Clock className="w-3.5 h-3.5" />
+        {item.classTime} — chegada {arriveTime(item.classTime)}
+      </div>
+
+      {/* OC6: botão cancelar direto */}
+      {item.kind === 'OC6' && item.status === 'confirmed' && (
+        <button
+          onClick={onCancelOc6}
+          disabled={cancelling}
+          className="text-xs text-red-500 hover:underline disabled:opacity-50"
+        >
+          {cancelling ? 'Cancelando…' : 'Cancelar agendamento'}
+        </button>
+      )}
+
+      {/* OC1: cancelar com justificativa */}
+      {item.kind === 'OC1' && item.status !== 'cancelled' && !showCancelForm && (
+        <button
+          onClick={() => setShowCancelForm(true)}
+          className="text-xs text-red-500 hover:underline"
+        >
+          Cancelar solicitação
+        </button>
+      )}
+
+      {item.kind === 'OC1' && showCancelForm && (
+        <div className="space-y-2 mt-1">
+          <label className="block text-xs font-medium text-gray-600">
+            Justificativa <span className="text-gray-400">(5 a 50 palavras)</span>
+          </label>
+          <textarea
+            value={justification}
+            onChange={(e) => { setJustification(e.target.value); setWordError('') }}
+            rows={3}
+            placeholder="Explique o motivo do cancelamento..."
+            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className={cn('text-xs', justification.trim().split(/\s+/).filter(Boolean).length < 5 ? 'text-red-500' : 'text-gray-400')}>
+              {justification.trim().split(/\s+/).filter(Boolean).length} / 50 palavras
+            </span>
+            {wordError && <span className="text-xs text-red-500">{wordError}</span>}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowCancelForm(false); setJustification(''); setWordError('') }}
+              className="flex-1 text-sm text-gray-500 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 transition"
+            >
+              Voltar
+            </button>
+            <button
+              onClick={handleOc1Cancel}
+              disabled={cancelling}
+              className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2 rounded-xl transition"
+            >
+              {cancelling ? 'Enviando…' : 'Confirmar cancelamento'}
+            </button>
+          </div>
         </div>
       )}
     </div>
