@@ -104,6 +104,9 @@ export default function ProfilePage() {
   const [tab, setTab] = useState<'profile' | 'bookings' | 'oc1'>('profile')
   const [saved, setSaved] = useState(false)
   const [avatarError, setAvatarError] = useState('')
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [cancelJust, setCancelJust] = useState('')
+  const [cancelWordErr, setCancelWordErr] = useState('')
 
   const { data: profile } = useQuery({
     queryKey: ['me'],
@@ -169,9 +172,23 @@ export default function ProfilePage() {
   }
 
   const cancelBookingMutation = useMutation({
-    mutationFn: (id: string) => api.patch(`/bookings/${id}/cancel`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-bookings'] }),
+    mutationFn: ({ id, justification }: { id: string; justification: string }) =>
+      api.patch(`/bookings/${id}/cancel`, { justification }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
+      setCancellingId(null)
+      setCancelJust('')
+    },
+    onError: (err: any) => setCancelWordErr(err.response?.data?.message || 'Erro ao cancelar.'),
   })
+
+  function handleCancelBooking(id: string) {
+    const words = cancelJust.trim().split(/\s+/).filter(Boolean).length
+    if (words < 5)  { setCancelWordErr('Mínimo de 5 palavras.'); return }
+    if (words > 50) { setCancelWordErr('Máximo de 50 palavras.'); return }
+    setCancelWordErr('')
+    cancelBookingMutation.mutate({ id, justification: cancelJust })
+  }
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
 
@@ -325,13 +342,48 @@ export default function ProfilePage() {
                 </span>
               </div>
               {b.status === 'confirmed' && new Date(b.lesson.date) >= today && (
-                <button
-                  onClick={() => cancelBookingMutation.mutate(b.id)}
-                  disabled={cancelBookingMutation.isPending}
-                  className="mt-3 text-xs text-red-500 hover:text-red-600 hover:underline disabled:opacity-50"
-                >
-                  Cancelar agendamento
-                </button>
+                cancellingId === b.id ? (
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Justificativa <span className="text-gray-400">(5 a 50 palavras)</span>
+                    </label>
+                    <textarea
+                      value={cancelJust}
+                      onChange={(e) => { setCancelJust(e.target.value); setCancelWordErr('') }}
+                      rows={3}
+                      placeholder="Explique o motivo do cancelamento..."
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className={cn('text-xs', cancelJust.trim().split(/\s+/).filter(Boolean).length < 5 ? 'text-red-400' : 'text-gray-400')}>
+                        {cancelJust.trim().split(/\s+/).filter(Boolean).length} / 50 palavras
+                      </span>
+                      {cancelWordErr && <span className="text-xs text-red-500">{cancelWordErr}</span>}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setCancellingId(null); setCancelJust(''); setCancelWordErr('') }}
+                        className="flex-1 text-sm text-gray-500 border border-gray-200 py-2 rounded-xl hover:bg-gray-50 transition"
+                      >
+                        Voltar
+                      </button>
+                      <button
+                        onClick={() => handleCancelBooking(b.id)}
+                        disabled={cancelBookingMutation.isPending}
+                        className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2 rounded-xl transition"
+                      >
+                        {cancelBookingMutation.isPending ? 'Enviando…' : 'Confirmar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setCancellingId(b.id); setCancelJust(''); setCancelWordErr('') }}
+                    className="mt-3 text-xs text-red-500 hover:text-red-600 hover:underline"
+                  >
+                    Cancelar agendamento
+                  </button>
+                )
               )}
             </div>
           )

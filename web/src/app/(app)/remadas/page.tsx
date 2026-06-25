@@ -70,7 +70,8 @@ export default function RemadasPage() {
   })
 
   const cancelBookingMutation = useMutation({
-    mutationFn: (id: string) => api.patch(`/bookings/${id}/cancel`),
+    mutationFn: ({ id, justification }: { id: string; justification: string }) =>
+      api.patch(`/bookings/${id}/cancel`, { justification }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
       queryClient.invalidateQueries({ queryKey: ['remadas-count'] })
@@ -159,7 +160,7 @@ export default function RemadasPage() {
               <MyRemadaCard
                 key={`${item.kind}-${item.id}`}
                 item={item}
-                onCancelOc6={() => cancelBookingMutation.mutate(item.id)}
+                onCancelOc6={(justification) => cancelBookingMutation.mutate({ id: item.id, justification })}
                 onCancelOc1={(justification) => oc1AlunoCancelMutation.mutate({ reqId: item.id, justification })}
                 cancelling={cancelBookingMutation.isPending || oc1AlunoCancelMutation.isPending}
               />
@@ -263,7 +264,7 @@ function MyRemadaCard({
   item, onCancelOc6, onCancelOc1, cancelling,
 }: {
   item: MyRemadaItem
-  onCancelOc6: () => void
+  onCancelOc6: (justification: string) => void
   onCancelOc1: (justification: string) => void
   cancelling: boolean
 }) {
@@ -274,12 +275,17 @@ function MyRemadaCard({
   const st = STATUS_LABELS[item.status] ?? STATUS_LABELS.confirmed
   const dateObj = new Date(item.lessonDate.slice(0, 10) + 'T12:00:00')
 
-  function handleOc1Cancel() {
+  const canCancel =
+    (item.kind === 'OC6' && item.status === 'confirmed') ||
+    (item.kind === 'OC1' && item.status !== 'cancelled')
+
+  function handleCancel() {
     const words = justification.trim().split(/\s+/).filter(Boolean).length
     if (words < 5)  { setWordError('Mínimo de 5 palavras.'); return }
     if (words > 50) { setWordError('Máximo de 50 palavras.'); return }
     setWordError('')
-    onCancelOc1(justification)
+    if (item.kind === 'OC6') onCancelOc6(justification)
+    else onCancelOc1(justification)
     setShowCancelForm(false)
     setJustification('')
   }
@@ -304,28 +310,16 @@ function MyRemadaCard({
         {item.classTime} — chegada {arriveTime(item.classTime)}
       </div>
 
-      {/* OC6: botão cancelar direto */}
-      {item.kind === 'OC6' && item.status === 'confirmed' && (
-        <button
-          onClick={onCancelOc6}
-          disabled={cancelling}
-          className="text-xs text-red-500 hover:underline disabled:opacity-50"
-        >
-          {cancelling ? 'Cancelando…' : 'Cancelar agendamento'}
-        </button>
-      )}
-
-      {/* OC1: cancelar com justificativa */}
-      {item.kind === 'OC1' && item.status !== 'cancelled' && !showCancelForm && (
+      {canCancel && !showCancelForm && (
         <button
           onClick={() => setShowCancelForm(true)}
           className="text-xs text-red-500 hover:underline"
         >
-          Cancelar solicitação
+          {item.kind === 'OC6' ? 'Cancelar agendamento' : 'Cancelar solicitação'}
         </button>
       )}
 
-      {item.kind === 'OC1' && showCancelForm && (
+      {canCancel && showCancelForm && (
         <div className="space-y-2 mt-1">
           <label className="block text-xs font-medium text-gray-600">
             Justificativa <span className="text-gray-400">(5 a 50 palavras)</span>
@@ -351,7 +345,7 @@ function MyRemadaCard({
               Voltar
             </button>
             <button
-              onClick={handleOc1Cancel}
+              onClick={handleCancel}
               disabled={cancelling}
               className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2 rounded-xl transition"
             >
