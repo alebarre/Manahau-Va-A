@@ -6,7 +6,6 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { MapPin, Calendar, Clock, ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useParams } from 'next/navigation'
 
 export default function EventDetailPage() {
@@ -31,10 +30,9 @@ export default function EventDetailPage() {
     <div className="max-w-lg mx-auto">
       {/* Imagem */}
       {event.imageUrl ? (
-        <div className="relative h-56 w-full">
-          <Image src={event.imageUrl} alt={event.name} fill className="object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          <Link href="/events" className="absolute top-4 left-4 bg-white/90 rounded-full p-2">
+        <div className="relative w-full">
+          <img src={event.imageUrl} alt={event.name} className="w-full h-auto block" />
+          <Link href="/events" className="absolute top-4 left-4 bg-white/90 rounded-full p-2 shadow">
             <ChevronLeft className="w-5 h-5 text-gray-700" />
           </Link>
         </div>

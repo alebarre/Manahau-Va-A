@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -24,7 +24,6 @@ const eventSchema = z.object({
   startAt: z.string().min(1, 'Informe o inicio'),
   endAt: z.string().min(1, 'Informe o termino'),
   notes: z.string().optional(),
-  imageUrl: z.string().url('URL inválida').optional().or(z.literal('')),
   sponsors: z.array(sponsorSchema).optional(),
 })
 type EventForm = z.infer<typeof eventSchema>
@@ -73,7 +72,7 @@ export default function AdminEventsPage() {
   }
 
   function openCreate() {
-    reset({ name: '', location: '', startAt: '', endAt: '', notes: '', imageUrl: '', sponsors: [] })
+    reset({ name: '', location: '', startAt: '', endAt: '', notes: '', sponsors: [] })
     setEditing(null)
     setShowForm(true)
   }
@@ -85,7 +84,6 @@ export default function AdminEventsPage() {
       startAt: toDatetimeLocal(ev.startAt),
       endAt: toDatetimeLocal(ev.endAt),
       notes: ev.notes ?? '',
-      imageUrl: ev.imageUrl ?? '',
       sponsors: ev.sponsors.map((s) => ({
         name: s.name,
         contact: s.contact ?? '',
@@ -103,11 +101,26 @@ export default function AdminEventsPage() {
     reset()
   }
 
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const addImageMutation = useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post(`/events/${id}/image`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+      setEditing((prev) => prev ? { ...prev, imageUrl: res.data.imageUrl } : null)
+      showToast('success', 'Imagem atualizada!')
+    },
+    onError: (err: any) => showToast('error', err.response?.data?.message || 'Erro ao enviar imagem.'),
+  })
+
   const createMutation = useMutation({
-    mutationFn: (data: EventForm) => api.post('/events', {
-      ...data,
-      imageUrl: data.imageUrl || undefined,
-    }),
+    mutationFn: (data: EventForm) => api.post('/events', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-events'] })
       closeForm()
@@ -118,10 +131,7 @@ export default function AdminEventsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: EventForm }) =>
-      api.patch(`/events/${id}`, {
-        ...data,
-        imageUrl: data.imageUrl || undefined,
-      }),
+      api.patch(`/events/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-events'] })
       closeForm()
@@ -238,16 +248,42 @@ export default function AdminEventsPage() {
               />
             </div>
 
-            {/* Imagem */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">URL da imagem (opcional)</label>
-              <input
-                {...register('imageUrl')}
-                placeholder="https://..."
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
-              />
-              {errors.imageUrl && <p className="text-red-500 text-xs mt-1">{errors.imageUrl.message}</p>}
-            </div>
+            {/* Imagem — apenas em edição */}
+            {editing && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Imagem</label>
+                {editing.imageUrl && (
+                  <img
+                    src={editing.imageUrl}
+                    alt="Imagem atual"
+                    className="w-full h-32 object-cover rounded-xl mb-2"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={addImageMutation.isPending}
+                  className="w-full border-2 border-dashed border-gray-300 rounded-xl py-3 text-sm text-gray-500 hover:border-brand-orange hover:text-brand-orange transition disabled:opacity-60"
+                >
+                  {addImageMutation.isPending
+                    ? 'Enviando...'
+                    : editing.imageUrl
+                    ? 'Trocar imagem'
+                    : 'Adicionar imagem'}
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) addImageMutation.mutate({ id: editing.id, file })
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+            )}
 
             {/* Patrocinadores */}
             <div>
