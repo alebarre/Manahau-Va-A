@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils'
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [selectedImage, setSelectedImage] = useState(0)
-  const [selectedVariant, setSelectedVariant] = useState<string | null>(null)
+  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [selectedColor, setSelectedColor] = useState<string | null>(null)
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', id],
@@ -32,7 +33,12 @@ export default function ProductDetailPage() {
   const colors = [...new Set(product.variants?.map((v: any) => v.color).filter(Boolean))] as string[]
 
   const whatsappMsg = encodeURIComponent(
-    `Olá! Tenho interesse no produto: ${product.name} — R$ ${Number(product.price).toFixed(2).replace('.', ',')}`
+    [
+      `Olá! Tenho interesse no produto: *${product.name}*`,
+      `Preço: R$ ${Number(product.price).toFixed(2).replace('.', ',')}`,
+      selectedSize  ? `Tamanho: ${selectedSize}`  : null,
+      selectedColor ? `Cor: ${selectedColor}` : null,
+    ].filter(Boolean).join('\n')
   )
 
   return (
@@ -93,10 +99,10 @@ export default function ProductDetailPage() {
               {sizes.map((s) => (
                 <button
                   key={s}
-                  onClick={() => setSelectedVariant(s)}
+                  onClick={() => setSelectedSize(s)}
                   className={cn(
                     'px-4 py-2 rounded-xl border text-sm font-medium transition',
-                    selectedVariant === s
+                    selectedSize === s
                       ? 'bg-brand-orange text-white border-brand-orange'
                       : 'border-gray-200 text-gray-700 hover:border-brand-orange'
                   )}
@@ -114,9 +120,18 @@ export default function ProductDetailPage() {
             <p className="text-sm font-medium text-gray-700 mb-2">Cor</p>
             <div className="flex flex-wrap gap-2">
               {colors.map((c) => (
-                <span key={c} className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600">
+                <button
+                  key={c}
+                  onClick={() => setSelectedColor(c)}
+                  className={cn(
+                    'px-4 py-2 rounded-xl border text-sm font-medium transition',
+                    selectedColor === c
+                      ? 'bg-brand-orange text-white border-brand-orange'
+                      : 'border-gray-200 text-gray-700 hover:border-brand-orange'
+                  )}
+                >
                   {c}
-                </span>
+                </button>
               ))}
             </div>
           </div>
