@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { authenticate, authorize } from '../../middlewares/authenticate'
 import { prisma } from '../../lib/prisma'
+import { uploadImage } from '../../lib/cloudinary'
 import { z } from 'zod'
 
 const createProductSchema = z.object({
@@ -97,7 +98,23 @@ export async function productRoutes(app: FastifyInstance) {
 
     adminApp.post('/:id/images', async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { url } = request.body as { url: string }
+
+      let fileBuffer: Buffer | null = null
+      let mimeType = ''
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          const chunks: Buffer[] = []
+          for await (const chunk of part.file) chunks.push(chunk)
+          fileBuffer = Buffer.concat(chunks)
+          mimeType = part.mimetype
+        }
+      }
+
+      if (!fileBuffer) return reply.status(400).send({ message: 'Arquivo obrigatório.' })
+      const allowed = ['image/jpeg', 'image/png', 'image/webp']
+      if (!allowed.includes(mimeType)) return reply.status(400).send({ message: 'Formato inválido. Use JPG, PNG ou WebP.' })
+
+      const url = await uploadImage(fileBuffer, 'products')
       const count = await prisma.productImage.count({ where: { productId: id } })
       const image = await prisma.productImage.create({
         data: { url, productId: id, order: count },

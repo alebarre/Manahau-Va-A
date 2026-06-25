@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/use-auth'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Clock, Users, CheckCircle, AlertCircle } from 'lucide-react'
+import { Clock, Users, CheckCircle, AlertCircle, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -13,6 +14,12 @@ import { Spinner } from '@/components/ui/spinner'
 type BookedUser = {
   id: string
   status?: string
+  user?: { id: string; name: string; avatarUrl: string | null }
+}
+
+type Oc1Request = {
+  id: string
+  status: string
   user?: { id: string; name: string; avatarUrl: string | null }
 }
 
@@ -25,11 +32,7 @@ type Lesson = {
   notes: string | null
   _count: { bookings: number }
   bookings: BookedUser[]
-}
-
-type LessonState = {
-  status: 'idle' | 'loading' | 'success' | 'error'
-  message?: string
+  oc1Requests: Oc1Request[]
 }
 
 function arriveTime(classTime: string) {
@@ -38,53 +41,46 @@ function arriveTime(classTime: string) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
 export default function RemadasPage() {
-  const [lessonStates, setLessonStates] = useState<Record<string, LessonState>>({})
+  const { user } = useAuth()
   const queryClient = useQueryClient()
+  const isStaff = user?.role === 'professor' || user?.role === 'super_admin'
 
   const { data: lessons = [], isLoading, isError } = useQuery<Lesson[]>({
     queryKey: ['remadas-all'],
     queryFn: () => api.get('/lessons').then((r) => r.data),
   })
 
-  function setLessonState(id: string, state: LessonState) {
-    setLessonStates((prev) => ({ ...prev, [id]: state }))
-  }
-
   const bookMutation = useMutation({
     mutationFn: (lessonId: string) => api.post('/bookings', { lessonId }),
-    onMutate: (lessonId) => setLessonState(lessonId, { status: 'loading' }),
-    onSuccess: (_, lessonId) => {
-      queryClient.invalidateQueries({ queryKey: ['remadas-all'] })
-      queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
-      setLessonState(lessonId, { status: 'success', message: 'Remada agendada com sucesso!' })
-    },
-    onError: (err: any, lessonId) => {
-      setLessonState(lessonId, {
-        status: 'error',
-        message: err.response?.data?.message || 'Erro ao agendar. Tente novamente.',
-      })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
   })
 
-  const oc1Mutation = useMutation({
+  const oc1RequestMutation = useMutation({
     mutationFn: (lessonId: string) => api.post('/oc1/request', { lessonId }),
-    onMutate: (lessonId) => setLessonState(lessonId, { status: 'loading' }),
-    onSuccess: (_, lessonId) => {
-      setLessonState(lessonId, {
-        status: 'success',
-        message: 'Solicitação enviada! Aguarde a confirmação do professor.',
-      })
-    },
-    onError: (err: any, lessonId) => {
-      setLessonState(lessonId, {
-        status: 'error',
-        message: err.response?.data?.message || 'Erro ao solicitar. Tente novamente.',
-      })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
   })
 
-  // Group by date
+  const oc1ConfirmMutation = useMutation({
+    mutationFn: (reqId: string) => api.patch(`/oc1/${reqId}/status`, { status: 'confirmed' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
+  })
+
+  const oc1StaffCancelMutation = useMutation({
+    mutationFn: (reqId: string) => api.patch(`/oc1/${reqId}/status`, { status: 'cancelled' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
+  })
+
+  const oc1AlunoCancelMutation = useMutation({
+    mutationFn: ({ reqId, justification }: { reqId: string; justification: string }) =>
+      api.patch(`/oc1/${reqId}/cancel`, { justification }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['remadas-all'] }),
+  })
+
   const byDate = lessons.reduce<Record<string, Lesson[]>>((acc, lesson) => {
     const key = lesson.date.slice(0, 10)
     if (!acc[key]) acc[key] = []
@@ -96,9 +92,7 @@ export default function RemadasPage() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5">
-      <p className="text-sm text-gray-500 mb-5">
-        Todas as remadas abertas a partir de hoje.
-      </p>
+      <p className="text-sm text-gray-500 mb-5">Todas as remadas abertas a partir de hoje.</p>
 
       {isLoading && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
@@ -133,32 +127,31 @@ export default function RemadasPage() {
                 <h2 className="text-sm font-bold text-gray-800 mb-3 capitalize">
                   {format(dateObj, "EEEE, dd 'de' MMMM", { locale: ptBR })}
                 </h2>
-
                 <div className="space-y-3">
-                  {oc6.map((lesson) => {
-                    const isBooked = lesson.bookings.some((b) => !b.user)
-                    return (
-                      <LessonCard
-                        key={lesson.id}
-                        lesson={lesson}
-                        state={lessonStates[lesson.id] ?? { status: 'idle' }}
-                        isBooked={isBooked}
-                        onAction={() => bookMutation.mutate(lesson.id)}
-                      />
-                    )
-                  })}
-                  {oc1.map((lesson) => {
-                    const isBooked = lesson.bookings.some((b) => !b.user)
-                    return (
-                      <LessonCard
-                        key={lesson.id}
-                        lesson={lesson}
-                        state={lessonStates[lesson.id] ?? { status: 'idle' }}
-                        isBooked={isBooked}
-                        onAction={() => oc1Mutation.mutate(lesson.id)}
-                      />
-                    )
-                  })}
+                  {oc6.map((lesson) => (
+                    <Oc6Card
+                      key={lesson.id}
+                      lesson={lesson}
+                      isStaff={isStaff}
+                      onBook={() => bookMutation.mutate(lesson.id)}
+                      booking={bookMutation}
+                      lessonId={lesson.id}
+                    />
+                  ))}
+                  {oc1.map((lesson) => (
+                    <Oc1Card
+                      key={lesson.id}
+                      lesson={lesson}
+                      isStaff={isStaff}
+                      onRequest={() => oc1RequestMutation.mutate(lesson.id)}
+                      onConfirm={(reqId) => oc1ConfirmMutation.mutate(reqId)}
+                      onStaffCancel={(reqId) => oc1StaffCancelMutation.mutate(reqId)}
+                      onAlunoCancel={(reqId, just) => oc1AlunoCancelMutation.mutate({ reqId, justification: just })}
+                      requestLoading={oc1RequestMutation.isPending}
+                      confirmLoading={oc1ConfirmMutation.isPending}
+                      cancelLoading={oc1StaffCancelMutation.isPending || oc1AlunoCancelMutation.isPending}
+                    />
+                  ))}
                 </div>
               </section>
             )
@@ -169,129 +162,286 @@ export default function RemadasPage() {
   )
 }
 
-function LessonCard({
-  lesson,
-  state,
-  isBooked,
-  onAction,
+// ─── OC6 Card ────────────────────────────────────────────────────────────────
+
+function Oc6Card({
+  lesson, isStaff, onBook, booking, lessonId,
 }: {
   lesson: Lesson
-  state: LessonState
-  isBooked: boolean
-  onAction: () => void
+  isStaff: boolean
+  onBook: () => void
+  booking: any
+  lessonId: string
 }) {
-  const isOc6 = lesson.classType === 'OC6'
-  const spots = lesson.maxSpots - lesson._count.bookings
-  const full  = isOc6 && spots <= 0
-  const done  = state.status === 'success' || isBooked
-  const err   = state.status === 'error'
-  const busy  = state.status === 'loading'
-
-  const accentColor = isOc6 ? 'text-brand-orange' : 'text-brand-dark'
-  const accentBg    = isOc6 ? 'bg-brand-orange/10' : 'bg-brand-dark/10'
+  const spots     = lesson.maxSpots - lesson._count.bookings
+  const full      = spots <= 0
+  const isBooked  = lesson.bookings.some((b) => !b.user)
+  const isMutating = booking.isPending && booking.variables === lessonId
 
   return (
-    <div className={cn(
-      'bg-white rounded-2xl border shadow-sm p-4 transition',
-      done ? 'border-green-200' : err ? 'border-red-200' : 'border-gray-100',
-    )}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className={cn('p-2 rounded-xl', accentBg)}>
-            <Clock className={cn('w-4 h-4', accentColor)} />
-          </div>
-          <div>
-            <p className="font-bold text-gray-900 text-lg leading-none">{lesson.classTime}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Chegada: {arriveTime(lesson.classTime)}</p>
-          </div>
-        </div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <CardHeader lesson={lesson} badge="OC6" badgeColor="brand-orange">
+        <span className={cn(
+          'flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full',
+          full ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600',
+        )}>
+          <Users className="w-3 h-3" />
+          {full ? 'Lotado' : `${spots} vaga${spots !== 1 ? 's' : ''}`}
+        </span>
+      </CardHeader>
 
-        <div className="flex flex-col items-end gap-1">
-          <span className={cn(
-            'text-xs font-semibold px-2.5 py-0.5 rounded-full',
-            isOc6 ? 'bg-brand-orange/10 text-brand-orange' : 'bg-brand-dark/10 text-brand-dark',
-          )}>
-            {isOc6 ? 'OC6' : 'OC1'}
-          </span>
-          {isOc6 && (
-            <span className={cn(
-              'flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full',
-              full ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600',
-            )}>
-              <Users className="w-3 h-3" />
-              {full ? 'Lotado' : `${spots} vaga${spots !== 1 ? 's' : ''}`}
-            </span>
-          )}
-        </div>
-      </div>
+      {lesson.notes && <CardNotes notes={lesson.notes} />}
 
-      {lesson.notes && (
-        <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 mb-3">{lesson.notes}</p>
-      )}
-
-      {/* Alunos agendados — visível apenas para professor/admin (bookings têm user) */}
-      {isOc6 && lesson.bookings.some((b) => b.user) && (
+      {/* Lista de alunos (staff) */}
+      {isStaff && lesson.bookings.some((b) => b.user) && (
         <div className="mb-3 space-y-1.5">
           {lesson.bookings.filter((b) => b.user).map((b, i) => (
-            <div key={b.id} className="flex items-center gap-2 text-sm text-gray-700">
-              <span className="w-4 text-xs text-gray-400 text-right shrink-0">{i + 1}</span>
-              {b.user!.avatarUrl ? (
-                <img
-                  src={b.user!.avatarUrl}
-                  alt={b.user!.name}
-                  className="w-6 h-6 rounded-full object-cover shrink-0"
-                />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-brand-orange/20 text-brand-orange text-[10px] font-bold flex items-center justify-center shrink-0">
-                  {b.user!.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className="truncate">{b.user!.name}</span>
-            </div>
+            <UserRow key={b.id} index={i + 1} user={b.user!} />
           ))}
         </div>
       )}
 
-      {!isOc6 && !done && (
-        <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 mb-3">
-          Aula individual com professor. Após solicitar, aguarde a confirmação.
-        </p>
-      )}
-
-      {isBooked && state.status === 'idle' && (
+      {/* Status do próprio aluno */}
+      {!isStaff && isBooked && (
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3">
           <CheckCircle className="w-4 h-4 shrink-0" />
-          {isOc6 ? 'Você já está agendado nesta canoa.' : 'Sua solicitação foi enviada.'}
-        </div>
-      )}
-      {state.status === 'success' && (
-        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3">
-          <CheckCircle className="w-4 h-4 shrink-0" />
-          {state.message}
-        </div>
-      )}
-      {err && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {state.message}
+          Você já está agendado nesta canoa.
         </div>
       )}
 
-      <Button
-        onClick={onAction}
-        loading={busy}
-        disabled={full || done}
-        variant={done ? 'secondary' : 'primary'}
-        className={cn(
-          !done && !isOc6 && 'bg-brand-dark hover:bg-brand-dark-muted text-white',
-        )}
-      >
-        {done
-          ? isOc6 ? '✓ Agendado' : '✓ Solicitação enviada'
-          : isOc6
-            ? full ? 'Sem vagas' : 'Agendar'
-            : 'Solicitar aula OC1'}
-      </Button>
+      {!isStaff && (
+        <Button
+          onClick={onBook}
+          loading={isMutating}
+          disabled={full || isBooked}
+          variant={isBooked ? 'secondary' : 'primary'}
+        >
+          {isBooked ? '✓ Agendado' : full ? 'Sem vagas' : 'Agendar'}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// ─── OC1 Card ────────────────────────────────────────────────────────────────
+
+function Oc1Card({
+  lesson, isStaff,
+  onRequest, onConfirm, onStaffCancel, onAlunoCancel,
+  requestLoading, confirmLoading, cancelLoading,
+}: {
+  lesson: Lesson
+  isStaff: boolean
+  onRequest: () => void
+  onConfirm: (reqId: string) => void
+  onStaffCancel: (reqId: string) => void
+  onAlunoCancel: (reqId: string, justification: string) => void
+  requestLoading: boolean
+  confirmLoading: boolean
+  cancelLoading: boolean
+}) {
+  const [showCancelForm, setShowCancelForm] = useState(false)
+  const [justification, setJustification] = useState('')
+  const [wordError, setWordError] = useState('')
+
+  const myRequest  = lesson.oc1Requests.find((r) => !r.user) // aluno's own request
+  const staffRequest = lesson.oc1Requests[0]                  // for staff view
+
+  function handleAlunoCancel() {
+    const words = countWords(justification)
+    if (words < 5)  { setWordError('Mínimo de 5 palavras.'); return }
+    if (words > 50) { setWordError('Máximo de 50 palavras.'); return }
+    setWordError('')
+    onAlunoCancel(myRequest!.id, justification)
+    setShowCancelForm(false)
+    setJustification('')
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <CardHeader lesson={lesson} badge="OC1" badgeColor="brand-dark" />
+
+      {lesson.notes && <CardNotes notes={lesson.notes} />}
+
+      {/* ── Staff view ── */}
+      {isStaff && (
+        <>
+          {staffRequest?.user ? (
+            <div className="mb-3 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-500 mb-2 font-medium">Solicitante</p>
+              <div className="flex items-center justify-between">
+                <UserRow index={0} user={staffRequest.user} showIndex={false} />
+                <span className={cn(
+                  'text-xs font-semibold px-2 py-0.5 rounded-full',
+                  staffRequest.status === 'confirmed'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-yellow-100 text-yellow-700',
+                )}>
+                  {staffRequest.status === 'confirmed' ? 'Confirmado' : 'Pendente'}
+                </span>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => onConfirm(staffRequest.id)}
+                  disabled={confirmLoading || staffRequest.status === 'confirmed'}
+                  className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition"
+                >
+                  {staffRequest.status === 'confirmed' ? '✓ Confirmado' : 'Confirmar'}
+                </button>
+                <button
+                  onClick={() => onStaffCancel(staffRequest.id)}
+                  disabled={cancelLoading}
+                  className="flex-1 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-600 text-sm font-semibold py-2 rounded-xl transition"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2 mb-3 text-center">
+              Nenhuma solicitação para esta aula.
+            </p>
+          )}
+        </>
+      )}
+
+      {/* ── Aluno view ── */}
+      {!isStaff && (
+        <>
+          {myRequest ? (
+            <>
+              <div className={cn(
+                'flex items-center gap-2 text-sm rounded-xl px-3 py-2 mb-3',
+                myRequest.status === 'confirmed'
+                  ? 'bg-green-50 border border-green-200 text-green-700'
+                  : 'bg-yellow-50 border border-yellow-200 text-yellow-700',
+              )}>
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                {myRequest.status === 'confirmed'
+                  ? 'Aula confirmada pelo professor!'
+                  : 'Aguardando confirmação do professor.'}
+              </div>
+
+              {!showCancelForm ? (
+                <button
+                  onClick={() => setShowCancelForm(true)}
+                  className="w-full text-sm text-red-500 hover:text-red-600 border border-red-200 hover:bg-red-50 py-2.5 rounded-xl transition font-medium"
+                >
+                  Cancelar solicitação
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-600">
+                    Justificativa do cancelamento <span className="text-gray-400">(5 a 50 palavras)</span>
+                  </label>
+                  <textarea
+                    value={justification}
+                    onChange={(e) => { setJustification(e.target.value); setWordError('') }}
+                    rows={3}
+                    placeholder="Explique o motivo do cancelamento..."
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className={cn('text-xs', countWords(justification) < 5 || countWords(justification) > 50 ? 'text-red-500' : 'text-gray-400')}>
+                      {countWords(justification)} / 50 palavras
+                    </span>
+                    {wordError && <span className="text-xs text-red-500">{wordError}</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowCancelForm(false); setJustification(''); setWordError('') }}
+                      className="flex-1 text-sm text-gray-500 border border-gray-200 py-2.5 rounded-xl hover:bg-gray-50 transition"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={handleAlunoCancel}
+                      disabled={cancelLoading}
+                      className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition"
+                    >
+                      {cancelLoading ? 'Enviando...' : 'Confirmar cancelamento'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 mb-3">
+                Aula individual com professor. Após solicitar, aguarde a confirmação.
+              </p>
+              <Button
+                onClick={onRequest}
+                loading={requestLoading}
+                className="bg-brand-dark hover:bg-brand-dark-muted text-white"
+              >
+                Solicitar aula OC1
+              </Button>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Shared sub-components ───────────────────────────────────────────────────
+
+function CardHeader({
+  lesson, badge, badgeColor, children,
+}: {
+  lesson: Lesson
+  badge: string
+  badgeColor: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2.5">
+        <div className={cn('p-2 rounded-xl', `bg-${badgeColor}/10`)}>
+          <Clock className={cn('w-4 h-4', `text-${badgeColor}`)} />
+        </div>
+        <div>
+          <p className="font-bold text-gray-900 text-lg leading-none">{lesson.classTime}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Chegada: {arriveTime(lesson.classTime)}</p>
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        <span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full', `bg-${badgeColor}/10 text-${badgeColor}`)}>
+          {badge}
+        </span>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function CardNotes({ notes }: { notes: string }) {
+  return (
+    <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 mb-3">{notes}</p>
+  )
+}
+
+function UserRow({
+  index, user, showIndex = true,
+}: {
+  index: number
+  user: { id: string; name: string; avatarUrl: string | null }
+  showIndex?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-gray-700">
+      {showIndex && (
+        <span className="w-4 text-xs text-gray-400 text-right shrink-0">{index}</span>
+      )}
+      {user.avatarUrl ? (
+        <img src={user.avatarUrl} alt={user.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
+      ) : (
+        <div className="w-6 h-6 rounded-full bg-brand-orange/20 text-brand-orange text-[10px] font-bold flex items-center justify-center shrink-0">
+          {user.name.charAt(0).toUpperCase()}
+        </div>
+      )}
+      <span className="truncate">{user.name}</span>
     </div>
   )
 }

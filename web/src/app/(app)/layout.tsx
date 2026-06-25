@@ -2,6 +2,7 @@ import { ProtectedRoute } from '@/components/protected-route'
 import { BottomNav } from '@/components/bottom-nav'
 import { AppHeader } from '@/components/app-header'
 import { AppFooter } from '@/components/app-footer'
+import { NotificationModal } from '@/components/notification-modal'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
         <BottomNav />
       </div>
+      <NotificationModal />
     </ProtectedRoute>
   )
 }

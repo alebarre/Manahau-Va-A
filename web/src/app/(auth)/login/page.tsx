@@ -7,6 +7,7 @@ import { z } from 'zod'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -19,6 +20,7 @@ type LoginForm = z.infer<typeof loginSchema>
 export default function LoginPage() {
   const router = useRouter()
   const { setUser } = useAuth()
+  const queryClient = useQueryClient()
   const [error, setError] = useState('')
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -30,6 +32,7 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', data)
       const { token, user } = res.data
       localStorage.setItem('token', token)
+      queryClient.clear()
       setUser(user)
       router.push('/home')
     } catch (err: any) {

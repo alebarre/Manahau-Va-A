@@ -35,9 +35,26 @@ export default function HomePage() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Saudação */}
-      <div className="mb-6">
-        <p className="text-gray-500 text-sm">Bem-vindo,</p>
-        <h1 className="text-2xl font-bold text-gray-900">{user?.name?.split(' ')[0]} 🌊</h1>
+      <div className="mb-6 flex items-center gap-4">
+        <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-brand-orange flex items-center justify-center">
+          {user?.avatarUrl ? (
+            <Image
+              src={user.avatarUrl}
+              alt={user.name}
+              width={56}
+              height={56}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span className="text-white font-bold text-xl">
+              {user?.name?.charAt(0).toUpperCase()}
+            </span>
+          )}
+        </div>
+        <div>
+          <p className="text-gray-500 text-sm">Bem-vindo,</p>
+          <h1 className="text-2xl font-bold text-gray-900">{user?.name?.split(' ')[0]}</h1>
+        </div>
       </div>
 
       {/* Fotos em destaque */}
@@ -47,18 +64,32 @@ export default function HomePage() {
             <h2 className="text-base font-semibold text-gray-700">Últimas remadas</h2>
             <Link href="/gallery" className="text-xs text-brand-orange font-medium">Ver tudo</Link>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {photos.map((photo: any) => (
-              <Link key={photo.id} href="/gallery" className="aspect-square relative rounded-xl overflow-hidden block">
-                <Image
-                  src={photo.url}
-                  alt={photo.caption || 'Foto da remada'}
-                  fill
-                  className="object-cover hover:scale-105 transition"
-                />
-              </Link>
-            ))}
-          </div>
+
+          {/* Foto principal — largura total com corte */}
+          <Link href="/gallery" className="relative block w-full h-44 rounded-xl overflow-hidden mb-2">
+            <Image
+              src={photos[0].url}
+              alt={photos[0].caption || 'Foto da remada'}
+              fill
+              className="object-cover hover:scale-105 transition"
+            />
+          </Link>
+
+          {/* Demais fotos em grade */}
+          {photos.length > 1 && (
+            <div className="grid grid-cols-3 gap-2">
+              {photos.slice(1).map((photo: any) => (
+                <Link key={photo.id} href="/gallery" className="aspect-square relative rounded-xl overflow-hidden block">
+                  <Image
+                    src={photo.url}
+                    alt={photo.caption || 'Foto da remada'}
+                    fill
+                    className="object-cover hover:scale-105 transition"
+                  />
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

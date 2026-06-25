@@ -261,15 +261,19 @@ export default function ProfilePage() {
       )}
 
       {/* Tab: Remadas */}
-      {tab === 'bookings' && (
-        <div className="space-y-3">
-          {bookings.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <Calendar className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p>Nenhum agendamento ainda.</p>
-            </div>
-          ) : (
-            bookings.map((b: any) => {
+      {tab === 'bookings' && (() => {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const upcoming = bookings.filter((b: any) => new Date(b.lesson.date) >= today)
+        if (upcoming.length === 0) return (
+          <div className="text-center py-10 text-gray-400">
+            <Calendar className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            <p>Nenhum agendamento futuro.</p>
+          </div>
+        )
+        return (
+          <div className="space-y-3">
+            {upcoming.map((b: any) => {
               const st = STATUS_LABELS[b.status]
               return (
                 <div key={b.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -295,10 +299,10 @@ export default function ProfilePage() {
                   )}
                 </div>
               )
-            })
-          )}
-        </div>
-      )}
+            })}
+          </div>
+        )
+      })()}
 
       {/* Tab: OC1 */}
       {tab === 'oc1' && (

@@ -14,6 +14,7 @@ import { oc1Routes } from './modules/oc1/oc1.routes'
 import { eventRoutes } from './modules/events/event.routes'
 import { productRoutes } from './modules/products/product.routes'
 import { photoRoutes } from './modules/photos/photo.routes'
+import { notificationRoutes } from './modules/notifications/notification.routes'
 
 const app = Fastify({ logger: true })
 
@@ -38,6 +39,7 @@ app.register(oc1Routes, { prefix: '/oc1' })
 app.register(eventRoutes, { prefix: '/events' })
 app.register(productRoutes, { prefix: '/products' })
 app.register(photoRoutes, { prefix: '/photos' })
+app.register(notificationRoutes, { prefix: '/notifications' })
 
 // Tratamento global de erros
 app.setErrorHandler((error, _request, reply) => {

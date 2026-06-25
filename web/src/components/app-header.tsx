@@ -7,9 +7,6 @@ import { useGlobalLoading } from '@/contexts/loading-context'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
-// Páginas raiz da nav — sem botão voltar
-const ROOT_PAGES = ['/home', '/schedule', '/events', '/shop', '/gallery', '/profile', '/admin', '/remadas']
-
 const PAGE_TITLES: Record<string, string> = {
   '/remadas':         'Remadas',
   '/schedule':        'Agendar remada',
@@ -31,8 +28,6 @@ export function AppHeader() {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isLoading } = useGlobalLoading()
-
-  const isRoot = ROOT_PAGES.some((p) => pathname === p)
 
   function resolveTitle() {
     if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
@@ -59,8 +54,8 @@ export function AppHeader() {
       />
 
       <div className="max-w-lg mx-auto flex items-center h-14 px-3 gap-2">
-        {/* Botão voltar — oculto na home para dar espaço ao banner */}
-        {!isRoot && (
+        {/* Botão voltar — oculto apenas na home (área do banner) */}
+        {pathname !== '/home' && (
           <button
             onClick={() => router.back()}
             className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-gray-100 transition flex-shrink-0"

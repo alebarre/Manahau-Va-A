@@ -111,6 +111,7 @@ manahau/
 | `ProductVariant` | Tamanho/cor/estoque de um produto |
 | `ProductImage` | Imagens de um produto (Cloudinary) |
 | `BeachPhoto` | Fotos das remadas com suporte a destaque (featured) |
+| `Notification` | Notificações in-app por usuário (lidas/não lidas) |
 
 ---
 
@@ -217,7 +218,10 @@ npm run dev:web      # somente frontend
 | POST | `/oc1/request` | JWT | Solicitar aula OC1 |
 | GET | `/oc1/my` | JWT | Minhas solicitações OC1 |
 | GET | `/oc1/pending` | prof/admin | Solicitações OC1 pendentes |
-| PATCH | `/oc1/:id/status` | prof/admin | Confirmar ou recusar OC1 |
+| PATCH | `/oc1/:id/status` | prof/admin | Confirmar ou cancelar OC1 (envia notificação ao aluno) |
+| PATCH | `/oc1/:id/cancel` | JWT | Aluno cancela OC1 com justificativa (5–50 palavras) |
+| GET | `/notifications/unread` | JWT | Notificações não lidas do usuário |
+| POST | `/notifications/read-all` | JWT | Marcar todas as notificações como lidas |
 | GET | `/events` | — | Lista eventos (param: `upcoming=true`) |
 | GET | `/events/:id` | — | Detalhe de evento com patrocinadores |
 | POST | `/events` | prof/admin | Criar evento |

@@ -26,6 +26,21 @@ export async function lessonRoutes(app: FastifyInstance) {
       where: {
         active: true,
         date: { gte: dateFrom, ...(dateTo && { lte: dateTo }) },
+        // Alunos não veem OC1 já solicitada por outro aluno
+        ...(!isStaff && {
+          OR: [
+            { classType: 'OC6' },
+            {
+              classType: 'OC1',
+              oc1Requests: {
+                none: {
+                  status: { in: ['pending', 'confirmed'] },
+                  userId: { not: sub },
+                },
+              },
+            },
+          ],
+        }),
       },
       include: {
         _count: { select: { bookings: { where: { status: 'confirmed' } } } },
@@ -37,6 +52,15 @@ export async function lessonRoutes(app: FastifyInstance) {
             }
           : {
               where: { status: 'confirmed', userId: sub },
+              select: { id: true, status: true },
+            },
+        oc1Requests: isStaff
+          ? {
+              where: { status: { in: ['pending', 'confirmed'] } },
+              select: { id: true, status: true, user: { select: { id: true, name: true, avatarUrl: true } } },
+            }
+          : {
+              where: { userId: sub, status: { in: ['pending', 'confirmed'] } },
               select: { id: true, status: true },
             },
       },

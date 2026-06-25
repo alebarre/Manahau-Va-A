@@ -65,8 +65,9 @@ model User {
   address     Address? @relation(fields: [addressId], references: [id])
   addressId   String?
 
-  bookings    Booking[]
-  oc1Requests Oc1Request[]
+  bookings      Booking[]
+  oc1Requests   Oc1Request[]
+  notifications Notification[]
 
   passwordResetToken   String?
   passwordResetExpires DateTime?
@@ -205,6 +206,19 @@ model ProductImage {
 
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
+}
+
+// ─── Notificações in-app ──────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  message   String
+  read      Boolean  @default(false)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  createdAt DateTime @default(now())
 }
 
 // ─── Fotos da Praia / Remadas ─────────────────────────────────────────────────

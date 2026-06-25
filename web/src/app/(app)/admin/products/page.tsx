@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -55,8 +55,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function AdminProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [newImageUrl, setNewImageUrl] = useState('')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
@@ -82,7 +82,6 @@ export default function AdminProductsPage() {
   function openCreate() {
     reset({ name: '', category: 'vestuario', description: '', price: 0, variants: [] })
     setEditing(null)
-    setNewImageUrl('')
     setShowForm(true)
   }
 
@@ -100,7 +99,6 @@ export default function AdminProductsPage() {
       })),
     })
     setEditing(p)
-    setNewImageUrl('')
     setShowForm(true)
   }
 
@@ -138,16 +136,21 @@ export default function AdminProductsPage() {
   })
 
   const addImageMutation = useMutation({
-    mutationFn: ({ id, url }: { id: string; url: string }) =>
-      api.post(`/products/${id}/images`, { url }),
-    onSuccess: () => {
+    mutationFn: ({ id, file }: { id: string; file: File }) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post(`/products/${id}/images`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-products'] })
-      setNewImageUrl('')
       setEditing((prev) => prev
-        ? { ...prev, images: [...prev.images, { id: '', url: newImageUrl, order: prev.images.length }] }
+        ? { ...prev, images: [...prev.images, { id: res.data.id, url: res.data.url, order: res.data.order }] }
         : prev
       )
     },
+    onError: (err: any) => showToast('error', err.response?.data?.message || 'Erro ao enviar imagem.'),
   })
 
   const removeImageMutation = useMutation({
@@ -327,22 +330,29 @@ export default function AdminProductsPage() {
                     ))}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <input
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    placeholder="URL da imagem..."
-                    className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => newImageUrl && addImageMutation.mutate({ id: editing.id, url: newImageUrl })}
-                    disabled={!newImageUrl || addImageMutation.isPending}
-                    className="bg-brand-orange text-white px-3 py-2 rounded-xl disabled:opacity-50"
-                  >
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={addImageMutation.isPending}
+                  className="flex items-center gap-2 border border-dashed border-gray-300 rounded-xl px-4 py-2.5 text-sm text-gray-500 hover:border-brand-orange hover:text-brand-orange transition disabled:opacity-50 w-full justify-center"
+                >
+                  {addImageMutation.isPending ? (
+                    <span className="w-4 h-4 border-2 border-brand-orange border-t-transparent rounded-full animate-spin" />
+                  ) : (
                     <ImagePlus className="w-4 h-4" />
-                  </button>
-                </div>
+                  )}
+                  {addImageMutation.isPending ? 'Enviando...' : 'Adicionar foto'}
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) { addImageMutation.mutate({ id: editing.id, file }); e.target.value = '' }
+                  }}
+                />
               </div>
             )}
 
