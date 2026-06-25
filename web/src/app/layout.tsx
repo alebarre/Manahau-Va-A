@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: 'Manahau Va\'A',
   description: 'Clube de canoa havaiana — Praia de Itaipu',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
