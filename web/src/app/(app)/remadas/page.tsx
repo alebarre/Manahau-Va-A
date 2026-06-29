@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
@@ -74,7 +74,14 @@ export default function RemadasPage() {
       api.patch(`/bookings/${id}/cancel`, { justification }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
-      queryClient.invalidateQueries({ queryKey: ['remadas-count'] })
+      queryClient.invalidateQueries({ queryKey: ['my-bookings-home'] })
+    },
+  })
+
+  const cancelByAdminMutation = useMutation({
+    mutationFn: (bookingId: string) => api.patch(`/bookings/${bookingId}/cancel`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remadas-all'] })
     },
   })
 
@@ -104,8 +111,28 @@ export default function RemadasPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['remadas-all'] })
       queryClient.invalidateQueries({ queryKey: ['my-oc1'] })
+      queryClient.invalidateQueries({ queryKey: ['my-oc1-home'] })
     },
   })
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  // Conta as OC6 confirmadas futuras para sincronizar o badge da home
+  const upcomingOc6Count = !isStaff
+    ? (myBookings as any[]).filter(
+        (b: any) =>
+          b.status === 'confirmed' &&
+          new Date((b.lesson.date as string).slice(0, 10) + 'T12:00:00') >= today
+      ).length
+    : 0
+
+  // Grava no localStorage quando o aluno visita a página e os dados já carregaram
+  useEffect(() => {
+    if (!isStaff && !loadingBookings) {
+      localStorage.setItem('remadas_badge_seen', String(upcomingOc6Count))
+    }
+  }, [isStaff, loadingBookings, upcomingOc6Count])
 
   const byDate = lessons.reduce<Record<string, Lesson[]>>((acc, lesson) => {
     const key = lesson.date.slice(0, 10)
@@ -119,18 +146,23 @@ export default function RemadasPage() {
   // ── Aluno: minhas remadas (OC6 + OC1 mesclados) ──────────────────────────────
   if (!isStaff) {
     const loading = loadingBookings || loadingOc1
-    const today = new Date(); today.setHours(0, 0, 0, 0)
 
     type MyItem =
-      | { kind: 'OC6'; id: string; status: string; lessonDate: string; classTime: string }
-      | { kind: 'OC1'; id: string; status: string; lessonDate: string; classTime: string }
+      | { kind: 'OC6'; id: string; status: string; lessonDate: string; classTime: string; notes?: string | null }
+      | { kind: 'OC1'; id: string; status: string; lessonDate: string; classTime: string; notes?: string | null }
 
     const oc6Items: MyItem[] = (myBookings as any[])
-      .filter((b) => new Date(b.lesson.date) >= today)
-      .map((b) => ({ kind: 'OC6', id: b.id, status: b.status, lessonDate: b.lesson.date, classTime: b.lesson.classTime }))
+      .filter((b) =>
+        b.status !== 'cancelled' &&
+        new Date((b.lesson.date as string).slice(0, 10) + 'T12:00:00') >= today
+      )
+      .map((b) => ({ kind: 'OC6', id: b.id, status: b.status, lessonDate: b.lesson.date, classTime: b.lesson.classTime, notes: b.notes }))
 
     const oc1Items: MyItem[] = (myOc1 as any[])
-      .filter((r) => new Date(r.lesson.date) >= today && r.status !== 'cancelled')
+      .filter((r) =>
+        r.status !== 'cancelled' &&
+        new Date((r.lesson.date as string).slice(0, 10) + 'T12:00:00') >= today
+      )
       .map((r) => ({ kind: 'OC1', id: r.id, status: r.status, lessonDate: r.lesson.date, classTime: r.lesson.classTime }))
 
     const allItems = [...oc6Items, ...oc1Items].sort((a, b) => a.lessonDate.localeCompare(b.lessonDate))
@@ -218,6 +250,8 @@ export default function RemadasPage() {
                       onBook={() => bookMutation.mutate(lesson.id)}
                       booking={bookMutation}
                       lessonId={lesson.id}
+                      onCancelStudent={(bookingId) => cancelByAdminMutation.mutate(bookingId)}
+                      cancellingStudentId={cancelByAdminMutation.isPending ? cancelByAdminMutation.variables ?? null : null}
                     />
                   ))}
                   {oc1.map((lesson) => (
@@ -252,6 +286,7 @@ type MyRemadaItem = {
   status: string
   lessonDate: string
   classTime: string
+  notes?: string | null
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -310,6 +345,13 @@ function MyRemadaCard({
         {item.classTime} — chegada {arriveTime(item.classTime)}
       </div>
 
+      {item.status === 'cancelled' && item.notes === 'admin_cancelled' && (
+        <div className="flex items-start gap-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>Remada cancelada pelo administrador. Entre em contato para mais informações.</span>
+        </div>
+      )}
+
       {canCancel && !showCancelForm && (
         <button
           onClick={() => setShowCancelForm(true)}
@@ -347,8 +389,9 @@ function MyRemadaCard({
             <button
               onClick={handleCancel}
               disabled={cancelling}
-              className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2 rounded-xl transition"
+              className="flex flex-1 items-center justify-center gap-2 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2 rounded-xl transition"
             >
+              {cancelling && <Spinner className="w-3.5 h-3.5" />}
               {cancelling ? 'Enviando…' : 'Confirmar cancelamento'}
             </button>
           </div>
@@ -361,13 +404,15 @@ function MyRemadaCard({
 // ─── OC6 Card ────────────────────────────────────────────────────────────────
 
 function Oc6Card({
-  lesson, isStaff, onBook, booking, lessonId,
+  lesson, isStaff, onBook, booking, lessonId, onCancelStudent, cancellingStudentId,
 }: {
   lesson: Lesson
   isStaff: boolean
   onBook: () => void
   booking: any
   lessonId: string
+  onCancelStudent?: (bookingId: string) => void
+  cancellingStudentId?: string | null
 }) {
   const spots     = lesson.maxSpots - lesson._count.bookings
   const full      = spots <= 0
@@ -388,11 +433,20 @@ function Oc6Card({
 
       {lesson.notes && <CardNotes notes={lesson.notes} />}
 
-      {/* Lista de alunos (staff) */}
+      {/* Lista de alunos (staff) com botão de remover */}
       {isStaff && lesson.bookings.some((b) => b.user) && (
         <div className="mb-3 space-y-1.5">
           {lesson.bookings.filter((b) => b.user).map((b, i) => (
-            <UserRow key={b.id} index={i + 1} user={b.user!} />
+            <div key={b.id} className="flex items-center justify-between gap-2">
+              <UserRow index={i + 1} user={b.user!} />
+              <button
+                onClick={() => onCancelStudent?.(b.id)}
+                disabled={cancellingStudentId === b.id}
+                className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition shrink-0 disabled:opacity-50"
+              >
+                {cancellingStudentId === b.id ? '…' : 'Remover'}
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -480,15 +534,17 @@ function Oc1Card({
                 <button
                   onClick={() => onConfirm(staffRequest.id)}
                   disabled={confirmLoading || staffRequest.status === 'confirmed'}
-                  className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition"
+                  className="flex flex-1 items-center justify-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition"
                 >
-                  {staffRequest.status === 'confirmed' ? '✓ Confirmado' : 'Confirmar'}
+                  {confirmLoading && <Spinner className="w-3.5 h-3.5" />}
+                  {staffRequest.status === 'confirmed' ? '✓ Confirmado' : confirmLoading ? 'Aguarde' : 'Confirmar'}
                 </button>
                 <button
                   onClick={() => onStaffCancel(staffRequest.id)}
                   disabled={cancelLoading}
-                  className="flex-1 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-600 text-sm font-semibold py-2 rounded-xl transition"
+                  className="flex flex-1 items-center justify-center gap-2 bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-600 text-sm font-semibold py-2 rounded-xl transition"
                 >
+                  {cancelLoading && <Spinner className="w-3.5 h-3.5" />}
                   Cancelar
                 </button>
               </div>
@@ -553,8 +609,9 @@ function Oc1Card({
                     <button
                       onClick={handleAlunoCancel}
                       disabled={cancelLoading}
-                      className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition"
+                      className="flex flex-1 items-center justify-center gap-2 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition"
                     >
+                      {cancelLoading && <Spinner className="w-3.5 h-3.5" />}
                       {cancelLoading ? 'Enviando...' : 'Confirmar cancelamento'}
                     </button>
                   </div>

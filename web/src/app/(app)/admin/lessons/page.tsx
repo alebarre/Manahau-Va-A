@@ -10,6 +10,8 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Plus, Users, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 
 const lessonSchema = z.object({
   date: z.string().min(1, 'Selecione uma data'),
@@ -20,10 +22,11 @@ const lessonSchema = z.object({
 })
 type LessonForm = z.infer<typeof lessonSchema>
 
-
 export default function AdminLessonsPage() {
   const [showForm, setShowForm] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data: lessons = [], isLoading } = useQuery({
@@ -44,15 +47,24 @@ export default function AdminLessonsPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-lessons'] })
       reset()
       setShowForm(false)
+      setFormError(null)
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     },
+    onError: (err: any) => {
+      setFormError(err.response?.data?.message ?? 'Erro ao criar aula. Tente novamente.')
+    },
   })
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      api.patch(`/lessons/${id}/status`, { active }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-lessons'] }),
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/lessons/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-lessons'] })
+      setConfirmDeleteId(null)
+    },
+    onError: () => {
+      setConfirmDeleteId(null)
+    },
   })
 
   return (
@@ -79,7 +91,9 @@ export default function AdminLessonsPage() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-800">Nova aula</h2>
-            <button onClick={() => setShowForm(false)}><X className="w-4 h-4 text-gray-400" /></button>
+            <button onClick={() => { setShowForm(false); setFormError(null) }}>
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
 
           <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="space-y-4">
@@ -137,13 +151,15 @@ export default function AdminLessonsPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-brand-orange text-white font-semibold py-3 rounded-xl disabled:opacity-60"
-            >
-              {isSubmitting ? 'Criando...' : 'Criar aula'}
-            </button>
+            {formError && (
+              <p className="bg-red-50 text-red-600 border border-red-200 rounded-xl px-4 py-2 text-sm">
+                {formError}
+              </p>
+            )}
+
+            <Button type="submit" loading={isSubmitting || createMutation.isPending}>
+              Criar aula
+            </Button>
           </form>
         </div>
       )}
@@ -156,10 +172,7 @@ export default function AdminLessonsPage() {
       ) : (
         <div className="space-y-3">
           {lessons.map((lesson: any) => (
-            <div key={lesson.id} className={cn(
-              'bg-white rounded-2xl border shadow-sm p-4',
-              lesson.active ? 'border-gray-100' : 'border-gray-200 opacity-60'
-            )}>
+            <div key={lesson.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-gray-900">
@@ -183,17 +196,32 @@ export default function AdminLessonsPage() {
                   </div>
                   {lesson.notes && <p className="text-xs text-gray-400 mt-1">{lesson.notes}</p>}
                 </div>
-                <button
-                  onClick={() => toggleMutation.mutate({ id: lesson.id, active: !lesson.active })}
-                  className={cn(
-                    'text-xs font-medium px-3 py-1.5 rounded-xl transition',
-                    lesson.active
-                      ? 'bg-red-50 text-red-500 hover:bg-red-100'
-                      : 'bg-green-50 text-green-600 hover:bg-green-100'
-                  )}
-                >
-                  {lesson.active ? 'Inativar' : 'Ativar'}
-                </button>
+
+                {confirmDeleteId === lesson.id ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="text-xs px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => deleteMutation.mutate(lesson.id)}
+                      disabled={deleteMutation.isPending}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-red-500 text-white hover:bg-red-600 disabled:opacity-60 transition"
+                    >
+                      {deleteMutation.isPending && <Spinner className="w-3 h-3" />}
+                      {deleteMutation.isPending ? 'Aguarde' : 'Confirmar'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(lesson.id)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition"
+                  >
+                    Excluir
+                  </button>
+                )}
               </div>
             </div>
           ))}

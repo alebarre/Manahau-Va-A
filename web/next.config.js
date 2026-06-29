@@ -12,6 +12,15 @@ const nextConfig = {
       { protocol: 'https', hostname: 'res.cloudinary.com' },
     ],
   },
+  async rewrites() {
+    if (process.env.NODE_ENV !== 'development') return []
+    return [
+      {
+        source: '/api-proxy/:path*',
+        destination: 'http://localhost:3001/:path*',
+      },
+    ]
+  },
 }
 
 module.exports = withPWA(nextConfig)

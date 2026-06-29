@@ -1,0 +1,28 @@
+VALIDAR COM JÉSSICA ANTES DO SQL
+
+
+Necessário na base do CRV
+
+INCLUSÃO NA BASE
+Thiago nonimizado  - CPF: 07421705198 - thiago.duarte@cnj.jus.br - TJPB - listas anonimizadas
+Kaleb anonimizado - CPF: 07271612106 - kalebe.souza@cnj.jus.br - TJAC - listas anonimizado
+SADRIONARA SOARES PACHECO NERI - CPF:031.133.694-95 - sadrionara.soares@tjpb.jus.br TJPB - listas FULL
+MARIA APARECIDA SARMENTO GADELHA - CPF 885.885.804-20 - maria.aparecida@tjpb.jus.br TJPB - listas FULL
+FRANCISCO DANIEL ARAÚJO DA COSTA - CPF:617.389.133-68 - francisco.dac.adv@gmail.com TJPB - listas FULL
+
+ALTERAÇÃO 
+alterar o email do usuário: denys.goncalves@cnj.jus.br para denysdesousa@gmail.com (donwload e acesso)
+Alterar wesley.valente@cnj.jus.br para: TJPB e listas FULL
+
+
+
+o admin deve ter controle sobre todos os alunos ativos e inativos.
+deve poder checkar o aluno com pagamento em dia.
+deve poder emitir um relatorio ao final do mes com todos os pagos, montante pago, montante a receber.
+deve poder montar o relatorio de acordo com o periodo de tempo, meses que deseja, todo o ano até o momento da gerção.
+Ter visibilidade de pagos e não pagos para poder emitir lembrete a todos sobre a data de pagamento, lembrete para os que não estiverem em dia (via app, email e whatsapp).
+Ao criar um novo evento ou cadastrar um novo produto, deve emitir um aviso no app whatsapp e email.
+
+
+
+

@@ -75,6 +75,8 @@ export default function SchedulePage() {
       setLessonState(lessonId, { status: 'loading' })
     },
     onSuccess: (_, lessonId) => {
+      queryClient.invalidateQueries({ queryKey: ['my-oc1'] })
+      queryClient.invalidateQueries({ queryKey: ['my-oc1-home'] })
       setLessonState(lessonId, {
         status: 'success',
         message: 'Solicitação enviada! Aguarde a confirmação do professor.',

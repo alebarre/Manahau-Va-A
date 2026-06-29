@@ -16,7 +16,10 @@ export async function bookingRoutes(app: FastifyInstance) {
     const { sub } = request.user as { sub: string }
     return prisma.booking.findMany({
       where: { userId: sub },
-      include: { lesson: true },
+      select: {
+        id: true, status: true, notes: true, createdAt: true,
+        lesson: { select: { id: true, date: true, classTime: true, classType: true, maxSpots: true } },
+      },
       orderBy: { lesson: { date: 'desc' } },
     })
   })
@@ -28,11 +31,14 @@ export async function bookingRoutes(app: FastifyInstance) {
 
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
-      include: { _count: { select: { bookings: { where: { status: 'confirmed' } } } } },
+      select: {
+        id: true, classType: true, maxSpots: true,
+        _count: { select: { bookings: { where: { status: 'confirmed' } } } },
+      },
     })
 
-    if (!lesson || !lesson.active) {
-      return reply.status(404).send({ message: 'Aula não encontrada ou inativa.' })
+    if (!lesson) {
+      return reply.status(404).send({ message: 'Aula não encontrada.' })
     }
     if (lesson.classType !== 'OC6') {
       return reply.status(400).send({ message: 'Use a rota de OC1 para aulas individuais.' })
@@ -41,7 +47,6 @@ export async function bookingRoutes(app: FastifyInstance) {
       return reply.status(409).send({ message: 'Aula sem vagas disponíveis.' })
     }
 
-    // Verifica se já existe um booking (pode ser cancelado)
     const existing = await prisma.booking.findUnique({
       where: { userId_lessonId: { userId: sub, lessonId } },
     })
@@ -50,7 +55,6 @@ export async function bookingRoutes(app: FastifyInstance) {
       if (existing.status === 'confirmed') {
         return reply.status(409).send({ message: 'Você já está agendado para esta aula.' })
       }
-      // Re-ativar booking cancelado
       const booking = await prisma.booking.update({
         where: { id: existing.id },
         data: { status: 'confirmed', notes },
@@ -70,10 +74,7 @@ export async function bookingRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string }
     const { justification } = (request.body ?? {}) as { justification?: string }
 
-    const words = (justification ?? '').trim().split(/\s+/).filter(Boolean).length
-    if (words < 5 || words > 50) {
-      return reply.status(400).send({ message: 'A justificativa deve ter entre 5 e 50 palavras.' })
-    }
+    const isStaff = role === 'professor' || role === 'super_admin'
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -83,27 +84,53 @@ export async function bookingRoutes(app: FastifyInstance) {
       },
     })
     if (!booking) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
-    if (booking.userId !== sub && role === 'aluno') {
+
+    const isOwnBooking = booking.userId === sub
+
+    // Aluno só pode cancelar o próprio agendamento
+    if (!isStaff && !isOwnBooking) {
       return reply.status(403).send({ message: 'Sem permissão.' })
     }
 
-    await prisma.booking.update({ where: { id }, data: { status: 'cancelled' } })
-
-    // Notificar professores e admins
     const date = new Date(booking.lesson.date)
-    const dd   = String(date.getDate()).padStart(2, '0')
-    const mm   = String(date.getMonth() + 1).padStart(2, '0')
-    const staff = await prisma.user.findMany({
-      where: { role: { in: ['professor', 'super_admin'] }, active: true },
-      select: { id: true },
-    })
-    if (staff.length > 0) {
-      await prisma.notification.createMany({
-        data: staff.map((s) => ({
-          userId:  s.id,
-          message: `⚠️ ${booking.user.name} cancelou a remada OC6 de ${dd}/${mm} às ${booking.lesson.classTime}. Justificativa: ${justification}`,
-        })),
+    const dd   = String(date.getUTCDate()).padStart(2, '0')
+    const mm   = String(date.getUTCMonth() + 1).padStart(2, '0')
+
+    if (isStaff && !isOwnBooking) {
+      // Admin/professor cancela agendamento de um aluno
+      await prisma.booking.update({
+        where: { id },
+        data: { status: 'cancelled', notes: 'admin_cancelled' },
       })
+      // Notifica o aluno
+      await prisma.notification.create({
+        data: {
+          userId:  booking.user.id,
+          message: `⚠️ Sua remada OC6 de ${dd}/${mm} às ${booking.lesson.classTime} foi cancelada pelo administrador. Entre em contato para mais informações.`,
+        },
+      })
+    } else {
+      // Aluno (ou staff) cancela o próprio agendamento — justificativa obrigatória
+      const words = (justification ?? '').trim().split(/\s+/).filter(Boolean).length
+      if (words < 5 || words > 50) {
+        return reply.status(400).send({ message: 'A justificativa deve ter entre 5 e 50 palavras.' })
+      }
+
+      await prisma.booking.update({ where: { id }, data: { status: 'cancelled' } })
+
+      // Notifica professores e admins
+      const staff = await prisma.user.findMany({
+        where: { role: { in: ['professor', 'super_admin'] }, active: true },
+        select: { id: true },
+      })
+      if (staff.length > 0) {
+        await prisma.notification.createMany({
+          data: staff.map((s) => ({
+            userId:  s.id,
+            message: `⚠️ ${booking.user.name} cancelou a remada OC6 de ${dd}/${mm} às ${booking.lesson.classTime}. Justificativa: ${justification}`,
+          })),
+        })
+      }
     }
 
     return reply.status(200).send({ ok: true })

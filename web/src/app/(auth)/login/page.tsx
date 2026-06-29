@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
+import { Button } from '@/components/ui/button'
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
@@ -88,13 +89,9 @@ export default function LoginPage() {
               <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
             )}
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-brand-orange hover:bg-brand-orange-dark text-white font-semibold py-3 rounded-xl transition disabled:opacity-60"
-            >
-              {isSubmitting ? 'Entrando...' : 'Entrar'}
-            </button>
+            <Button type="submit" loading={isSubmitting}>
+              Entrar
+            </Button>
           </form>
 
           <div className="mt-5 flex flex-col gap-2 text-center text-sm">

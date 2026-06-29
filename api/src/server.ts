@@ -6,6 +6,7 @@ import multipart from '@fastify/multipart'
 import { ZodError } from 'zod'
 import { Prisma } from '@prisma/client'
 import { env } from './config/env'
+import { prisma } from './lib/prisma'
 import { authRoutes } from './modules/auth/auth.routes'
 import { userRoutes } from './modules/users/user.routes'
 import { lessonRoutes } from './modules/lessons/lesson.routes'
@@ -19,7 +20,7 @@ import { notificationRoutes } from './modules/notifications/notification.routes'
 const app = Fastify({ logger: true })
 
 app.register(cors, {
-  origin: env.FRONTEND_URL,
+  origin: env.NODE_ENV === 'development' ? true : env.FRONTEND_URL,
   credentials: true,
 })
 
@@ -75,11 +76,18 @@ app.setErrorHandler((error, _request, reply) => {
   return reply.status(status).send({ message: error.message || 'Erro interno no servidor.' })
 })
 
-app.get('/health', async () => ({ status: 'ok' }))
+app.get('/health', async () => {
+  await prisma.$queryRaw`SELECT 1`
+  return { status: 'ok' }
+})
 
-app.listen({ port: env.PORT, host: '0.0.0.0' }, (err) => {
-  if (err) {
+async function start() {
+  try {
+    await prisma.$connect()
+    await app.listen({ port: env.PORT, host: '0.0.0.0' })
+  } catch (err) {
     app.log.error(err)
     process.exit(1)
   }
-})
+}
+start()

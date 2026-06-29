@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Camera, Calendar, Clock, MapPin } from 'lucide-react'
+import { Camera, Calendar, Clock, MapPin, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const profileSchema = z.object({
@@ -193,11 +193,11 @@ export default function ProfilePage() {
   const today = new Date(); today.setHours(0, 0, 0, 0)
 
   const upcomingOc6Count = (bookings as any[]).filter(
-    (b) => b.status === 'confirmed' && new Date(b.lesson.date) >= today
+    (b) => b.status === 'confirmed' && b.lesson?.active !== false && new Date(b.lesson.date.slice(0, 10) + 'T12:00:00') >= today
   ).length
 
   const upcomingOc1Count = (oc1Requests as any[]).filter(
-    (r) => r.status !== 'cancelled' && new Date(r.lesson.date) >= today
+    (r) => r.status !== 'cancelled' && new Date(r.lesson.date.slice(0, 10) + 'T12:00:00') >= today
   ).length
 
   const tabs = [
@@ -301,8 +301,9 @@ export default function ProfilePage() {
         const sorted = [...(bookings as any[])].sort(
           (a, b) => a.lesson.date.localeCompare(b.lesson.date)
         )
-        const upcoming = sorted.filter((b) => new Date(b.lesson.date) >= today && b.status !== 'cancelled')
-        const past     = sorted.filter((b) => new Date(b.lesson.date) <  today || b.status === 'cancelled')
+        const isFuture  = (b: any) => new Date(b.lesson.date.slice(0, 10) + 'T12:00:00') >= today
+        const upcoming  = sorted.filter((b) => b.status !== 'cancelled' && b.lesson?.active !== false && isFuture(b))
+        const past      = sorted.filter((b) => (b.status === 'cancelled' || b.lesson?.active === false) && isFuture(b))
 
         if (sorted.length === 0) return (
           <div className="text-center py-12 text-gray-400">
@@ -341,7 +342,13 @@ export default function ProfilePage() {
                   Praia às {arriveTime(b.lesson.classTime)}
                 </span>
               </div>
-              {b.status === 'confirmed' && new Date(b.lesson.date) >= today && (
+              {b.status === 'cancelled' && b.notes === 'admin_cancelled' && (
+                <div className="flex items-start gap-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mt-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Cancelada pelo administrador. Entre em contato para mais informações.</span>
+                </div>
+              )}
+              {b.status === 'confirmed' && new Date(b.lesson.date.slice(0, 10) + 'T12:00:00') >= today && (
                 cancellingId === b.id ? (
                   <div className="mt-3 space-y-2">
                     <label className="block text-xs font-medium text-gray-600">
@@ -416,8 +423,9 @@ export default function ProfilePage() {
         const sorted = [...(oc1Requests as any[])].sort(
           (a, b) => a.lesson.date.localeCompare(b.lesson.date)
         )
-        const upcoming = sorted.filter((r) => new Date(r.lesson.date) >= today && r.status !== 'cancelled')
-        const past     = sorted.filter((r) => new Date(r.lesson.date) <  today || r.status === 'cancelled')
+        const isFuture  = (r: any) => new Date(r.lesson.date.slice(0, 10) + 'T12:00:00') >= today
+        const upcoming  = sorted.filter((r) => r.status !== 'cancelled' && r.lesson?.active !== false && isFuture(r))
+        const past      = sorted.filter((r) => (r.status === 'cancelled' || r.lesson?.active === false) && isFuture(r))
 
         if (sorted.length === 0) return (
           <div className="text-center py-12 text-gray-400">

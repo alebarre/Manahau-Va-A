@@ -16,20 +16,45 @@ export default function HomePage() {
     queryFn: () => api.get('/photos?featured=true&limit=6').then((r) => r.data),
   })
 
-  const { data: openLessons } = useQuery({
-    queryKey: ['remadas-count'],
-    queryFn: () => api.get('/lessons').then((r) => r.data as any[]),
+  const isAluno = user?.role === 'aluno'
+
+  const { data: myBookings } = useQuery({
+    queryKey: ['my-bookings-home'],
+    queryFn: () => api.get('/bookings/my').then((r) => r.data as any[]),
+    enabled: isAluno,
   })
 
-  const openCount = openLessons?.length ?? 0
+  const { data: myOc1 } = useQuery({
+    queryKey: ['my-oc1-home'],
+    queryFn: () => api.get('/oc1/my').then((r) => r.data as any[]),
+    enabled: isAluno,
+  })
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const upcomingOc6 = myBookings?.filter(
+    (b: any) => b.status === 'confirmed' && new Date(b.lesson.date.slice(0, 10) + 'T12:00:00') >= today
+  ).length ?? 0
+
+  const upcomingOc1 = myOc1?.filter(
+    (b: any) => b.status !== 'cancelled' && new Date(b.lesson.date.slice(0, 10) + 'T12:00:00') >= today
+  ).length ?? 0
+
+  const seenOc6Count = typeof window !== 'undefined'
+    ? parseInt(localStorage.getItem('remadas_badge_seen') || '0', 10)
+    : 0
+
+  const remadaBadge = isAluno && upcomingOc6 > seenOc6Count ? upcomingOc6 : null
+  const profileBadge = isAluno && upcomingOc1 > 0 ? upcomingOc1 : null
 
   const appCards = [
-    { label: 'Remadas', icon: Waves, href: '/remadas', color: 'bg-teal-500', badge: openCount > 0 ? openCount : null },
+    { label: 'Remadas', icon: Waves, href: '/remadas', color: 'bg-teal-500', badge: remadaBadge },
     { label: 'Agendar', icon: Calendar, href: '/schedule', color: 'bg-brand-orange', badge: null },
     { label: 'Eventos', icon: Trophy, href: '/events', color: 'bg-brand-dark', badge: null },
     { label: 'Shop', icon: ShoppingBag, href: '/shop', color: 'bg-emerald-500', badge: null },
     { label: 'Galeria', icon: ImageIcon, href: '/gallery', color: 'bg-purple-500', badge: null },
-    { label: 'Meu perfil', icon: User, href: '/profile', color: 'bg-gray-500', badge: null },
+    { label: 'Meu perfil', icon: User, href: '/profile', color: 'bg-gray-500', badge: profileBadge },
   ]
 
   return (

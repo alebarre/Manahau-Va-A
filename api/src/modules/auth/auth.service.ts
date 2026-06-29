@@ -33,7 +33,10 @@ export async function registerUser(data: RegisterInput) {
 }
 
 export async function loginUser(data: LoginInput) {
-  const user = await prisma.user.findUnique({ where: { email: data.email } })
+  const user = await prisma.user.findUnique({
+    where: { email: data.email },
+    select: { id: true, name: true, email: true, role: true, avatarUrl: true, password: true, active: true, emailVerified: true },
+  })
   if (!user || !user.active) throw new Error('Credenciais inválidas.')
 
   const valid = await bcrypt.compare(data.password, user.password)

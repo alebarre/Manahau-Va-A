@@ -76,6 +76,8 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([role, active])
 }
 
 model Phone {
@@ -94,7 +96,6 @@ model Lesson {
   classTime   String    // horário livre, ex: "06:00", "07:30"
   classType   ClassType
   maxSpots    Int       @default(6)
-  active      Boolean   @default(true)
   notes       String?
 
   bookings    Booking[]
@@ -104,6 +105,8 @@ model Lesson {
   updatedAt DateTime @updatedAt
 
   @@unique([date, classTime, classType])
+  @@index([date])
+  @@index([classType])
 }
 
 // ─── Agendamento OC6 ─────────────────────────────────────────────────────────
@@ -122,6 +125,9 @@ model Booking {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+  @@index([status])
 }
 
 // ─── Solicitação OC1 (aguarda confirmação do professor) ───────────────────────
@@ -140,6 +146,9 @@ model Oc1Request {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+  @@index([status])
 }
 
 // ─── Evento ───────────────────────────────────────────────────────────────────
@@ -219,6 +228,8 @@ model Notification {
   userId    String
 
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ─── Fotos da Praia / Remadas ─────────────────────────────────────────────────

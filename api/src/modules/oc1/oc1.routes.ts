@@ -34,8 +34,8 @@ export async function oc1Routes(app: FastifyInstance) {
     const { sub } = request.user as { sub: string }
     const { lessonId, notes } = requestSchema.parse(request.body)
 
-    const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } })
-    if (!lesson || !lesson.active) {
+    const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, select: { id: true } })
+    if (!lesson) {
       return reply.status(404).send({ message: 'Aula não encontrada.' })
     }
 
@@ -72,9 +72,10 @@ export async function oc1Routes(app: FastifyInstance) {
 
     const oc1 = await prisma.oc1Request.findUnique({
       where: { id },
-      include: {
-        lesson: true,
+      select: {
+        id: true, status: true, userId: true,
         user: { select: { id: true, name: true } },
+        lesson: { select: { date: true, classTime: true } },
       },
     })
 
@@ -106,7 +107,10 @@ export async function oc1Routes(app: FastifyInstance) {
     const { sub } = request.user as { sub: string }
     return prisma.oc1Request.findMany({
       where: { userId: sub },
-      include: { lesson: true },
+      select: {
+        id: true, status: true, notes: true, createdAt: true,
+        lesson: { select: { id: true, date: true, classTime: true, classType: true } },
+      },
       orderBy: { createdAt: 'desc' },
     })
   })
@@ -115,9 +119,10 @@ export async function oc1Routes(app: FastifyInstance) {
   app.get('/pending', { onRequest: [authorize('professor', 'super_admin')] }, async () => {
     return prisma.oc1Request.findMany({
       where: { status: 'pending' },
-      include: {
+      select: {
+        id: true, status: true, notes: true, createdAt: true,
         user: { select: { id: true, name: true, email: true } },
-        lesson: true,
+        lesson: { select: { id: true, date: true, classTime: true, classType: true } },
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -134,9 +139,10 @@ export async function oc1Routes(app: FastifyInstance) {
 
     const oc1 = await prisma.oc1Request.findUnique({
       where: { id },
-      include: {
-        lesson: true,
+      select: {
+        id: true, userId: true,
         user: { select: { id: true, name: true } },
+        lesson: { select: { date: true, classTime: true } },
       },
     })
     if (!oc1) return reply.status(404).send({ message: 'Solicitação não encontrada.' })
